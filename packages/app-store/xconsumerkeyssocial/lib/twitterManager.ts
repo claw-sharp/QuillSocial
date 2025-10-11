@@ -549,3 +549,320 @@ export const post = async (
     };
   }
 };
+
+/**
+ * Search for recent tweets by hashtags (for X Connect Engagement)
+ * @param credentialId - The credential ID to use
+ * @param hashtags - Array of hashtags to search (without # symbol)
+ * @param options - Search options (max results, language, filters, pagination)
+ */
+export async function searchHashtags(
+  credentialId: number,
+  hashtags: string[],
+  options: {
+    max?: number;
+    lang?: string;
+    minLikes?: number;
+    minReplies?: number;
+    excludeKeywords?: string[];
+    nextToken?: string;
+  } = {}
+): Promise<{
+  posts: Array<{
+    id: string;
+    authorId: string;
+    authorHandle: string;
+    authorName?: string;
+    text: string;
+    likeCount: number;
+    replyCount: number;
+    lang?: string;
+    createdAt?: Date;
+  }>;
+  nextToken?: string;
+  error?: string;
+}> {
+  try {
+    const { client, credentials } = await getXConsumerKeysClient(credentialId);
+    if (!client || !credentials) {
+      return { posts: [], error: "Could not create X client with provided credentials." };
+    }
+
+    // Build query
+    let query = hashtags.map((tag) => `#${tag.replace(/^#/, "")}`).join(" OR ");
+
+    // Add language filter
+    if (options.lang) {
+      query += ` lang:${options.lang}`;
+    }
+
+    // Add exclude keywords
+    if (options.excludeKeywords && options.excludeKeywords.length > 0) {
+      options.excludeKeywords.forEach((keyword) => {
+        query += ` -${keyword}`;
+      });
+    }
+
+    // Exclude retweets and replies for cleaner results
+    query += " -is:retweet -is:reply";
+
+    const log = logger.getChildLogger({
+      prefix: ["[xconsumerkeys/twitterManager/searchHashtags]"],
+    });
+    log.info("Searching tweets", { query, max: options.max });
+
+    // Search tweets with retry logic
+    const searchResult = await retryWithBackoff(
+      () =>
+        client.search(query, {
+          max_results: Math.min(options.max || 20, 100),
+          "tweet.fields": ["author_id", "created_at", "public_metrics", "lang"],
+          "user.fields": ["username", "name"],
+          expansions: ["author_id"],
+          next_token: options.nextToken,
+        }),
+      { retries: 3, baseDelayMs: 1000 }
+    );
+
+    const posts: Array<{
+      id: string;
+      authorId: string;
+      authorHandle: string;
+      authorName?: string;
+      text: string;
+      likeCount: number;
+      replyCount: number;
+      lang?: string;
+      createdAt?: Date;
+    }> = [];
+
+    const users = searchResult.includes?.users || [];
+
+    for (const tweet of searchResult.tweets || []) {
+      const author = users.find((u: any) => u.id === tweet.author_id);
+      const metrics = tweet.public_metrics;
+
+      // Apply filters
+      if (options.minLikes && metrics && metrics.like_count < options.minLikes) continue;
+      if (options.minReplies && metrics && metrics.reply_count < options.minReplies) continue;
+
+      posts.push({
+        id: tweet.id,
+        authorId: tweet.author_id!,
+        authorHandle: author?.username || "unknown",
+        authorName: author?.name,
+        text: tweet.text,
+        likeCount: metrics?.like_count || 0,
+        replyCount: metrics?.reply_count || 0,
+        lang: tweet.lang,
+        createdAt: tweet.created_at ? new Date(tweet.created_at) : undefined,
+      });
+    }
+
+    log.info("Search completed", { found: posts.length });
+
+    return {
+      posts,
+      nextToken: searchResult.meta?.next_token,
+    };
+  } catch (err: any) {
+    const log = logger.getChildLogger({
+      prefix: ["[xconsumerkeys/twitterManager/searchHashtags]"],
+    });
+    log.error("Failed to search hashtags", { error: serializeError(err) });
+    return {
+      posts: [],
+      error: `Failed to search: ${err.message || "Unknown error"}`,
+    };
+  }
+}
+
+/**
+ * Check if the authenticated user is following specific user IDs
+ * @param credentialId - The credential ID to use
+ * @param targetUserIds - Array of user IDs to check
+ */
+export async function batchCheckFollowing(
+  credentialId: number,
+  targetUserIds: string[]
+): Promise<{
+  followingMap: { [userId: string]: boolean };
+  error?: string;
+}> {
+  try {
+    const { client, credentials } = await getXConsumerKeysClient(credentialId);
+    if (!client || !credentials) {
+      return {
+        followingMap: {},
+        error: "Could not create X client with provided credentials.",
+      };
+    }
+
+    const log = logger.getChildLogger({
+      prefix: ["[xconsumerkeys/twitterManager/batchCheckFollowing]"],
+    });
+
+    // Get authenticated user's ID first
+    const me = await retryWithBackoff(() => client.me(), {
+      retries: 2,
+      baseDelayMs: 500,
+    });
+
+    if (!me?.data?.id) {
+      return {
+        followingMap: {},
+        error: "Could not get authenticated user ID",
+      };
+    }
+
+    const myUserId = me.data.id;
+
+    // Get user's following list (up to 1000 - X API limit)
+    const following = await retryWithBackoff(
+      () =>
+        client.following(myUserId, {
+          max_results: 1000,
+          "user.fields": ["id"],
+        }),
+      { retries: 3, baseDelayMs: 1000 }
+    );
+
+    const followingIds = new Set(
+      (following.data || []).map((user: any) => user.id)
+    );
+
+    log.info("Checked following status", {
+      totalFollowing: followingIds.size,
+      checking: targetUserIds.length,
+    });
+
+    // Build result map
+    const followingMap: { [userId: string]: boolean } = {};
+    targetUserIds.forEach((userId) => {
+      followingMap[userId] = followingIds.has(userId);
+    });
+
+    return { followingMap };
+  } catch (err: any) {
+    const log = logger.getChildLogger({
+      prefix: ["[xconsumerkeys/twitterManager/batchCheckFollowing]"],
+    });
+    log.error("Failed to check following status", { error: serializeError(err) });
+    return {
+      followingMap: {},
+      error: `Failed to check following: ${err.message || "Unknown error"}`,
+    };
+  }
+}
+
+/**
+ * Reply to a tweet
+ * @param credentialId - The credential ID to use
+ * @param tweetId - The tweet ID to reply to
+ * @param text - The reply text (max 280 characters)
+ */
+export async function replyToTweet(
+  credentialId: number,
+  tweetId: string,
+  text: string
+): Promise<{ success: boolean; tweetId?: string; error?: string }> {
+  try {
+    const { client, credentials } = await getXConsumerKeysClient(credentialId);
+    if (!client || !credentials) {
+      return {
+        success: false,
+        error: "Could not create X client with provided credentials.",
+      };
+    }
+
+    // Check if we have user access tokens for posting
+    if (
+      !credentials.accessToken ||
+      !credentials.accessSecret ||
+      credentials.accessToken.trim() === "" ||
+      credentials.accessSecret.trim() === ""
+    ) {
+      return {
+        success: false,
+        error: "Access tokens are required for replying. Please provide both access token and access token secret.",
+      };
+    }
+
+    const log = logger.getChildLogger({
+      prefix: ["[xconsumerkeys/twitterManager/replyToTweet]"],
+    });
+
+    log.info("Attempting to reply to tweet", { tweetId, textLength: text.length });
+
+    // Post the reply with retry logic
+    const reply = await retryWithBackoff(
+      () =>
+        client.reply(text, tweetId),
+      { retries: 3, baseDelayMs: 1000 }
+    );
+
+    log.info("Reply posted successfully", { replyId: reply.data?.id });
+
+    return {
+      success: true,
+      tweetId: reply.data?.id,
+    };
+  } catch (err: any) {
+    const log = logger.getChildLogger({
+      prefix: ["[xconsumerkeys/twitterManager/replyToTweet]"],
+    });
+
+    // Handle 403 errors with detailed classification
+    if (err.code === 403 || err?.response?.status === 403) {
+      const errorClassification = classifyTwitter403Error(err);
+      log.error("403 Error replying to tweet", {
+        type: errorClassification.type,
+        message: errorClassification.message,
+        solution: errorClassification.solution,
+      });
+      return {
+        success: false,
+        error: `${errorClassification.message}: ${errorClassification.solution}`,
+      };
+    }
+
+    log.error("Failed to reply to tweet", { error: serializeError(err) });
+    return {
+      success: false,
+      error: `Failed to reply: ${err.message || "Unknown error"}`,
+    };
+  }
+}
+
+/**
+ * Get authenticated user's X user ID
+ * @param credentialId - The credential ID to use
+ */
+export async function getAuthenticatedUserId(
+  credentialId: number
+): Promise<{ userId?: string; error?: string }> {
+  try {
+    const { client, credentials } = await getXConsumerKeysClient(credentialId);
+    if (!client || !credentials) {
+      return { error: "Could not create X client with provided credentials." };
+    }
+
+    const me = await retryWithBackoff(() => client.me(), {
+      retries: 2,
+      baseDelayMs: 500,
+    });
+
+    if (!me?.data?.id) {
+      return { error: "Could not get authenticated user ID" };
+    }
+
+    return { userId: me.data.id };
+  } catch (err: any) {
+    const log = logger.getChildLogger({
+      prefix: ["[xconsumerkeys/twitterManager/getAuthenticatedUserId]"],
+    });
+    log.error("Failed to get user ID", { error: serializeError(err) });
+    return { error: `Failed to get user ID: ${err.message || "Unknown error"}` };
+  }
+}
+

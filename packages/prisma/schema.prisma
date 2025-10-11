@@ -136,6 +136,7 @@ model User {
   userExtraData        UserExtraData?          @relation(fields: [userExtraDataId], references: [id])
   openAIUsages         OpenAIUsage[]
   instagramAccounts    InstagramAccount[]
+  xConnectSetting      XConnectSetting?
 
   @@unique([email])
   @@unique([email, username])
@@ -740,4 +741,85 @@ model InstagramAccount {
   @@index([userId])
   @@index([credentialId])
   @@unique([userId, igUserId]) // avoid duplicates
+}
+
+enum XEngagementStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+model XConnectSetting {
+  id               String   @id @default(cuid())
+  userId           Int
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hashtags         String[] @default(["connect", "letsconnect", "followback", "buildinpublic", "devcommunity", "indiehackers", "techtwitter", "100DaysOfCode"])
+  language         String?
+  minLikes         Int?
+  minReplies       Int?
+  excludeKeywords  String[] @default([])
+  excludeFollowed  Boolean  @default(true)
+  dailyMaxComments Int      @default(20)
+  rateSpacingMs    Int      @default(3000)
+  topics           String[] @default(["Frontend", "Backend", "GenAI", "Full-stack", "DevOps", "DSA", "LeetCode", "AI/ML", "Web3", "Data Science", "Freelancing", "Python", "Startup"])
+  monthlyReadCap   Int      @default(100)
+  monthlyPostCap   Int      @default(500)
+  maxReadsPerScan  Int      @default(20)
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+
+  @@unique([userId])
+  @@index([userId])
+}
+
+model XDiscoveredPost {
+  id               String   @id @default(cuid())
+  userId           Int
+  xPostId          String
+  authorId         String
+  authorHandle     String
+  authorName       String?
+  authorIsFollowed Boolean  @default(false)
+  text             String   @db.Text
+  likeCount        Int      @default(0)
+  replyCount       Int      @default(0)
+  lang             String?
+  discoveredAt     DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+
+  @@unique([userId, xPostId])
+  @@index([userId, authorIsFollowed])
+  @@index([discoveredAt])
+}
+
+model XEngagementJob {
+  id             String            @id @default(cuid())
+  userId         Int
+  xPostId        String
+  authorHandle   String
+  plannedComment String            @db.Text
+  status         XEngagementStatus @default(PENDING)
+  attempt        Int               @default(0)
+  scheduledAt    DateTime
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  error          String?           @db.Text
+
+  @@index([userId, status])
+  @@index([scheduledAt])
+}
+
+model XUsageCounter {
+  id        String   @id @default(cuid())
+  userId    Int
+  readsUsed Int      @default(0)
+  postsUsed Int      @default(0)
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([userId])
+  @@index([userId])
 }

@@ -65,6 +65,7 @@ import {
   Newspaper,
   Linkedin,
   BookOpen,
+  MessageCircle,
 } from "@quillsocial/ui/components/icon";
 import type { User as UserAuth } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
@@ -581,6 +582,15 @@ const navigation: NavigationItemType[] = [
     name: "Calendar",
     href: "/calendar",
     icon: CalendarDays,
+  },
+  {
+    name: "X Connect",
+    href: "/x-connect",
+    icon: MessageCircle,
+    isCurrent: ({ router }) => {
+      const path = router.asPath.split("?")[0];
+      return path.startsWith("/x-connect");
+    },
   },
   {
     name: "Headline Generator",

@@ -9,6 +9,7 @@ import { openaiUsageRouter } from "./openaiUsage";
 import { viewerOrganizationsRouter } from "./organizations/_router";
 import { socialsRouter } from "./socials/_router";
 import { viewerTeamsRouter } from "./teams/_router";
+import { xConnectRouter } from "./xConnect";
 
 export const viewerRouter = mergeRouters(
   loggedInViewerRouter,
@@ -23,5 +24,6 @@ export const viewerRouter = mergeRouters(
     billings: billingsRouter,
     socials: socialsRouter,
     openaiUsage: openaiUsageRouter,
+    xConnect: xConnectRouter,
   })
 );
