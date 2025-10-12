@@ -2,7 +2,9 @@
  * Bulk Toolbar - Select actions and template editor
  */
 
+import { useState } from "react";
 import { Button, Badge } from "@quillsocial/ui";
+import { X, Plus } from "lucide-react";
 
 interface BulkToolbarProps {
   selectedCount: number;
@@ -13,6 +15,7 @@ interface BulkToolbarProps {
   template: string;
   onTemplateChange: (template: string) => void;
   topics: string[];
+  onTopicsChange: (topics: string[]) => void;
 }
 
 const DEFAULT_TEMPLATE = `Let's #connect if you're into:
@@ -44,7 +47,30 @@ export default function BulkToolbar({
   template,
   onTemplateChange,
   topics,
+  onTopicsChange,
 }: BulkToolbarProps) {
+  const [topicInput, setTopicInput] = useState("");
+  const [isEditingTopics, setIsEditingTopics] = useState(false);
+
+  const handleAddTopic = () => {
+    const trimmed = topicInput.trim();
+    if (trimmed && !topics.includes(trimmed)) {
+      onTopicsChange([...topics, trimmed]);
+      setTopicInput("");
+    }
+  };
+
+  const handleRemoveTopic = (topicToRemove: string) => {
+    onTopicsChange(topics.filter((t) => t !== topicToRemove));
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddTopic();
+    }
+  };
+
   return (
     <>
       {/* Selection Controls */}
@@ -110,19 +136,62 @@ export default function BulkToolbar({
           </div>
         </div>
 
-        {/* Topics Display */}
-        {topics.length > 0 && (
-          <div className="mt-3">
-            <p className="text-muted mb-2 text-xs font-medium">Active Topics:</p>
-            <div className="flex flex-wrap gap-1">
-              {topics.map((topic) => (
-                <Badge key={topic} variant="gray">
+        {/* Topics Display - Editable */}
+        <div className="mt-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-muted text-xs font-medium">Active Topics:</p>
+            <Button
+              color="minimal"
+              size="sm"
+              onClick={() => setIsEditingTopics(!isEditingTopics)}
+            >
+              {isEditingTopics ? "Done" : "Edit"}
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {topics.map((topic) => (
+              <div key={topic} className="group relative">
+                <Badge variant="gray" className="pr-6">
                   {topic}
                 </Badge>
-              ))}
-            </div>
+                {isEditingTopics && (
+                  <button
+                    onClick={() => handleRemoveTopic(topic)}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 flex h-4 w-4 items-center justify-center rounded-full bg-red-500/10 text-red-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-500/20"
+                    title="Remove topic"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+            {isEditingTopics && (
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={topicInput}
+                  onChange={(e) => setTopicInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Add topic..."
+                  className="border-subtle text-foreground h-6 w-24 rounded border bg-transparent px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <button
+                  onClick={handleAddTopic}
+                  disabled={!topicInput.trim()}
+                  className="flex h-6 w-6 items-center justify-center rounded bg-primary text-white disabled:opacity-50 hover:opacity-90"
+                  title="Add topic"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+            )}
           </div>
-        )}
+          {isEditingTopics && (
+            <p className="text-muted mt-2 text-xs">
+              Topics are saved locally and will be used in comment templates with {"{topics}"}.
+            </p>
+          )}
+        </div>
       </div>
     </>
   );

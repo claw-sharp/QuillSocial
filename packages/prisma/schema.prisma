@@ -753,6 +753,7 @@ enum XEngagementStatus {
 
 enum XDiscoveredStatus {
   ACTIVE
+  QUEUED
   ENGAGED
   SKIPPED
 }

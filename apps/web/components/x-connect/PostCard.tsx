@@ -18,6 +18,7 @@ interface PostCardProps {
     likeCount: number;
     replyCount: number;
     discoveredAt: Date;
+    status: "ACTIVE" | "QUEUED" | "ENGAGED" | "SKIPPED";
   };
   isSelected: boolean;
   onToggle: (postId: string) => void;
@@ -55,28 +56,32 @@ export default function PostCard({ post, isSelected, onToggle, onSkip, template,
 
   return (
     <div
-      className={`border-subtle relative overflow-hidden rounded-2xl border bg-card p-4 shadow-sm transition-all hover:shadow-md ${
+      className={`border-subtle relative overflow-hidden rounded-2xl border bg-card p-4 shadow-sm transition-all ${
+        post.status !== "ACTIVE" ? "opacity-75" : ""
+      } ${
         isSelected ? "ring-primary ring-2 ring-offset-2" : "hover:border-gray-400"
       }`}
     >
-      {/* Checkbox */}
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
-        {onSkip && (
-          <button
-            onClick={handleSkip}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10 text-red-600 transition-all hover:bg-red-500/20 hover:scale-110"
-            title="Skip this post"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => onToggle(post.xPostId)}
-          className="h-5 w-5 cursor-pointer rounded border-gray-300 text-primary transition-all hover:scale-110 focus:ring-2 focus:ring-primary focus:ring-offset-2"
-        />
-      </div>
+      {/* Checkbox - Only show for ACTIVE posts */}
+      {post.status === "ACTIVE" && (
+        <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+          {onSkip && (
+            <button
+              onClick={handleSkip}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10 text-red-600 transition-all hover:bg-red-500/20 hover:scale-110"
+              title="Skip this post"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggle(post.xPostId)}
+            className="h-5 w-5 cursor-pointer rounded border-gray-300 text-primary transition-all hover:scale-110 focus:ring-2 focus:ring-primary focus:ring-offset-2"
+          />
+        </div>
+      )}
 
       {/* Author */}
       <div className="mb-3 flex items-start gap-3">
@@ -93,6 +98,9 @@ export default function PostCard({ post, isSelected, onToggle, onSkip, template,
             ) : (
               <Badge variant="green">Not Followed</Badge>
             )}
+            {post.status === "QUEUED" && <Badge variant="orange">Queued</Badge>}
+            {post.status === "ENGAGED" && <Badge variant="blue">Engaged</Badge>}
+            {post.status === "SKIPPED" && <Badge variant="red">Skipped</Badge>}
           </div>
           {post.authorName && <p className="text-muted text-xs">{post.authorName}</p>}
         </div>
@@ -118,27 +126,30 @@ export default function PostCard({ post, isSelected, onToggle, onSkip, template,
 
       {/* Actions */}
       <div className="flex items-center justify-between gap-2">
-        <Button
-          color="minimal"
-          size="sm"
-          onClick={handleTogglePreview}
-          EndIcon={showPreview ? ChevronUp : ChevronDown}
-        >
-          {showPreview ? "Hide" : "Preview"} Comment
-        </Button>
+        {post.status === "ACTIVE" && (
+          <Button
+            color="minimal"
+            size="sm"
+            onClick={handleTogglePreview}
+            EndIcon={showPreview ? ChevronUp : ChevronDown}
+          >
+            {showPreview ? "Hide" : "Preview"} Comment
+          </Button>
+        )}
         <Button
           color="minimal"
           size="sm"
           href={`https://twitter.com/${post.authorHandle}/status/${post.xPostId}`}
           target="_blank"
           EndIcon={ExternalLink}
+          className={post.status !== "ACTIVE" ? "ml-auto" : ""}
         >
           View on X
         </Button>
       </div>
 
-      {/* Preview */}
-      {showPreview && (
+      {/* Preview - Only for ACTIVE posts */}
+      {post.status === "ACTIVE" && showPreview && (
         <div className="bg-muted mt-3 rounded-lg p-3">
           <p className="text-muted mb-1 text-xs font-medium">Preview:</p>
           <textarea

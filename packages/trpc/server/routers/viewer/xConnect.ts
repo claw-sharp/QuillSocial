@@ -45,6 +45,7 @@ const listDiscoveredInputSchema = z.object({
   pageSize: z.number().int().min(1).max(100).default(20),
   onlyNotFollowed: z.boolean().optional(),
   q: z.string().optional(),
+  status: z.enum(["ACTIVE", "QUEUED", "ENGAGED", "SKIPPED", "ALL"]).optional().default("ACTIVE"),
 });
 
 const generatePreviewInputSchema = z.object({
@@ -73,7 +74,7 @@ const listJobsInputSchema = z.object({
 
 const markPostsInputSchema = z.object({
   xPostIds: z.array(z.string()).min(1).max(50),
-  status: z.enum(["ENGAGED", "SKIPPED"]),
+  status: z.enum(["QUEUED", "ENGAGED", "SKIPPED"]),
 });
 
 // ============================================================================
@@ -377,12 +378,12 @@ export const xConnectRouter = router({
    */
   listDiscovered: authedProcedure.input(listDiscoveredInputSchema).query(async ({ ctx, input }) => {
     const userId = ctx.user.id;
-    const { page, pageSize, onlyNotFollowed, q } = input;
+    const { page, pageSize, onlyNotFollowed, q, status } = input;
     const skip = (page - 1) * pageSize;
 
     const where: Prisma.XDiscoveredPostWhereInput = {
       userId,
-      status: "ACTIVE", // Only show active posts
+      ...(status && status !== "ALL" ? { status: status as "ACTIVE" | "QUEUED" | "ENGAGED" | "SKIPPED" } : {}),
       ...(onlyNotFollowed ? { authorIsFollowed: false } : {}),
       ...(q
         ? {
@@ -621,6 +622,15 @@ export const xConnectRouter = router({
       select: { discoveredAt: true },
     });
 
+    // Get counts for each status
+    const [activeCount, queuedCount, engagedCount, skippedCount, totalCount] = await Promise.all([
+      prisma.xDiscoveredPost.count({ where: { userId, status: "ACTIVE" } }),
+      prisma.xDiscoveredPost.count({ where: { userId, status: "QUEUED" } }),
+      prisma.xDiscoveredPost.count({ where: { userId, status: "ENGAGED" } }),
+      prisma.xDiscoveredPost.count({ where: { userId, status: "SKIPPED" } }),
+      prisma.xDiscoveredPost.count({ where: { userId } }),
+    ]);
+
     return {
       todayPosted,
       dailyMax: settings.dailyMaxComments,
@@ -629,6 +639,13 @@ export const xConnectRouter = router({
       postsRemaining: settings.monthlyPostCap - counter.postsUsed,
       resetAt: counter.resetAt,
       settings,
+      statusCounts: {
+        active: activeCount,
+        queued: queuedCount,
+        engaged: engagedCount,
+        skipped: skippedCount,
+        total: totalCount,
+      },
     };
   }),
 

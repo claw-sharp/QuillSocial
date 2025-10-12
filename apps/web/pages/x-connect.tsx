@@ -20,6 +20,25 @@ import PostCard from "@components/x-connect/PostCard";
 import BulkToolbar from "@components/x-connect/BulkToolbar";
 import EngageModal from "@components/x-connect/EngageModal";
 
+// Default topics - used when nothing is in localStorage or settings
+const DEFAULT_TOPICS = [
+  "Frontend",
+  "Backend",
+  "GenAI",
+  "Full-stack",
+  "DevOps",
+  "DSA",
+  "LeetCode",
+  "AI/ML",
+  "Web3",
+  "Data Science",
+  "Freelancing",
+  "Python",
+  "Startup",
+];
+
+const TOPICS_STORAGE_KEY = "x-connect-topics";
+
 export default function XConnectEngagement() {
   const router = useRouter();
   const { data: session } = useSession();
@@ -30,6 +49,8 @@ export default function XConnectEngagement() {
   const [page, setPage] = useState(1);
   const [onlyNotFollowed, setOnlyNotFollowed] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"ACTIVE" | "QUEUED" | "ENGAGED" | "SKIPPED" | "ALL">("ACTIVE");
+  const [activeTopics, setActiveTopics] = useState<string[]>([]);
 
   // Show scroll to top button when user scrolls down
   useEffect(() => {
@@ -50,7 +71,38 @@ export default function XConnectEngagement() {
     page,
     pageSize: 20,
     onlyNotFollowed,
+    status: statusFilter,
   });
+
+  // Initialize topics from localStorage or settings
+  useEffect(() => {
+    // Try to load from localStorage first
+    const storedTopics = localStorage.getItem(TOPICS_STORAGE_KEY);
+    if (storedTopics) {
+      try {
+        const parsed = JSON.parse(storedTopics);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setActiveTopics(parsed);
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to parse stored topics", e);
+      }
+    }
+
+    // If no localStorage, use settings or defaults
+    if (statsQuery.data?.settings.topics && statsQuery.data.settings.topics.length > 0) {
+      setActiveTopics(statsQuery.data.settings.topics);
+    } else {
+      setActiveTopics(DEFAULT_TOPICS);
+    }
+  }, [statsQuery.data?.settings.topics]);
+
+  // Save topics to localStorage whenever they change
+  const handleTopicsChange = (newTopics: string[]) => {
+    setActiveTopics(newTopics);
+    localStorage.setItem(TOPICS_STORAGE_KEY, JSON.stringify(newTopics));
+  };
 
   // Mutations
   const scanMutation = trpc.viewer.xConnect.startScan.useMutation({
@@ -125,9 +177,9 @@ export default function XConnectEngagement() {
   };
 
   const handleEngageSuccess = () => {
-    // Mark selected posts as ENGAGED
+    // Mark selected posts as QUEUED (not ENGAGED yet)
     markPostsMutation.mutate(
-      { xPostIds: selectedPostIds, status: "ENGAGED" },
+      { xPostIds: selectedPostIds, status: "QUEUED" },
       {
         onSuccess: () => {
           setSelectedPostIds([]);
@@ -197,8 +249,88 @@ export default function XConnectEngagement() {
         {stats && <ScanStatusCard stats={stats} onRescan={handleStartScan} />}
       </div>
 
-      {/* Bulk Toolbar */}
-      {posts.length > 0 && (
+      {/* Filters */}
+      <div className="border-subtle mb-4 rounded-2xl border bg-card p-4 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <label className="text-foreground text-sm font-medium">Status:</label>
+            <div className="flex gap-1">
+              <Button
+                color={statusFilter === "ACTIVE" ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => {
+                  setStatusFilter("ACTIVE");
+                  setPage(1);
+                }}
+              >
+                Active {stats?.statusCounts && `(${stats.statusCounts.active})`}
+              </Button>
+              <Button
+                color={statusFilter === "QUEUED" ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => {
+                  setStatusFilter("QUEUED");
+                  setPage(1);
+                  setSelectedPostIds([]); // Clear selection for non-active posts
+                }}
+              >
+                Queued {stats?.statusCounts && `(${stats.statusCounts.queued})`}
+              </Button>
+              <Button
+                color={statusFilter === "ENGAGED" ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => {
+                  setStatusFilter("ENGAGED");
+                  setPage(1);
+                  setSelectedPostIds([]); // Clear selection for non-active posts
+                }}
+              >
+                Engaged {stats?.statusCounts && `(${stats.statusCounts.engaged})`}
+              </Button>
+              <Button
+                color={statusFilter === "SKIPPED" ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => {
+                  setStatusFilter("SKIPPED");
+                  setPage(1);
+                  setSelectedPostIds([]); // Clear selection for non-active posts
+                }}
+              >
+                Skipped {stats?.statusCounts && `(${stats.statusCounts.skipped})`}
+              </Button>
+              <Button
+                color={statusFilter === "ALL" ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => {
+                  setStatusFilter("ALL");
+                  setPage(1);
+                  setSelectedPostIds([]); // Clear selection when showing all
+                }}
+              >
+                All {stats?.statusCounts && `(${stats.statusCounts.total})`}
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="onlyNotFollowed"
+              checked={onlyNotFollowed}
+              onChange={(e) => {
+                setOnlyNotFollowed(e.target.checked);
+                setPage(1);
+              }}
+              className="bg-default border-default text-brand-default focus:ring-brand-default h-4 w-4 rounded"
+            />
+            <label htmlFor="onlyNotFollowed" className="text-foreground text-sm">
+              Only show authors I don't follow
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Bulk Toolbar - Only show for ACTIVE status */}
+      {posts.length > 0 && statusFilter === "ACTIVE" && (
         <BulkToolbar
           selectedCount={selectedPostIds.length}
           totalCount={posts.length}
@@ -207,7 +339,8 @@ export default function XConnectEngagement() {
           onSelectNotFollowed={handleSelectNotFollowed}
           template={bulkTemplate}
           onTemplateChange={setBulkTemplate}
-          topics={stats?.settings.topics || []}
+          topics={activeTopics}
+          onTopicsChange={handleTopicsChange}
         />
       )}
 
@@ -234,7 +367,7 @@ export default function XConnectEngagement() {
                   onToggle={handleTogglePost}
                   onSkip={handleSkipPost}
                   template={bulkTemplate}
-                  topics={stats?.settings.topics || []}
+                  topics={activeTopics}
                 />
               ))}
             </div>
@@ -265,8 +398,8 @@ export default function XConnectEngagement() {
         )}
       </div>
 
-      {/* Sticky Footer */}
-      {selectedPostIds.length > 0 && (
+      {/* Sticky Footer - Only show for ACTIVE status */}
+      {selectedPostIds.length > 0 && statusFilter === "ACTIVE" && (
         <div className="border-subtle bg-card/95 fixed bottom-0 left-0 right-0 z-50 border-t p-4 shadow-2xl backdrop-blur-md">
           <div className="container mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -301,7 +434,7 @@ export default function XConnectEngagement() {
         onClose={() => setEngageModalOpen(false)}
         selectedPostIds={selectedPostIds}
         template={bulkTemplate}
-        topics={stats?.settings.topics || []}
+        topics={activeTopics}
         dailyMax={stats?.dailyMax || 20}
         todayPosted={stats?.todayPosted || 0}
         onSuccess={handleEngageSuccess}
