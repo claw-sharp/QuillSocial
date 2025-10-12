@@ -79,13 +79,13 @@ You can test the updated cron jobs locally:
 
 **Test Post Publishing:**
 ```bash
-curl -i -X POST 'http://localhost:3000/api/cron/Post?apiKey=prod-cron-api_89!12' \
+curl -i -X POST 'http://localhost:3000/api/cron/Post?apiKey=' \
   -H "Content-Type: application/json"
 ```
 
 **Test Comment Plugs:**
 ```bash
-curl -i -X POST 'http://localhost:3000/api/cron/CommentPlug?apiKey=prod-cron-api_89!12' \
+curl -i -X POST 'http://localhost:3000/api/cron/CommentPlug?apiKey=' \
   -H "Content-Type: application/json"
 ```
 
