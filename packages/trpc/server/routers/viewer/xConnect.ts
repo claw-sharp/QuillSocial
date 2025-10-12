@@ -71,6 +71,11 @@ const listJobsInputSchema = z.object({
   pageSize: z.number().int().min(1).max(100).default(20),
 });
 
+const markPostsInputSchema = z.object({
+  xPostIds: z.array(z.string()).min(1).max(50),
+  status: z.enum(["ENGAGED", "SKIPPED"]),
+});
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -377,6 +382,7 @@ export const xConnectRouter = router({
 
     const where: Prisma.XDiscoveredPostWhereInput = {
       userId,
+      status: "ACTIVE", // Only show active posts
       ...(onlyNotFollowed ? { authorIsFollowed: false } : {}),
       ...(q
         ? {
@@ -623,6 +629,28 @@ export const xConnectRouter = router({
       postsRemaining: settings.monthlyPostCap - counter.postsUsed,
       resetAt: counter.resetAt,
       settings,
+    };
+  }),
+
+  /**
+   * Mark posts as engaged or skipped
+   */
+  markPosts: authedProcedure.input(markPostsInputSchema).mutation(async ({ ctx, input }) => {
+    const userId = ctx.user.id;
+    const { xPostIds, status } = input;
+
+    const updated = await prisma.xDiscoveredPost.updateMany({
+      where: {
+        userId,
+        xPostId: { in: xPostIds },
+      },
+      data: {
+        status,
+      },
+    });
+
+    return {
+      updated: updated.count,
     };
   }),
 });

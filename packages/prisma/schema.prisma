@@ -8,7 +8,7 @@ datasource db {
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["views", "jsonProtocol"]
+  previewFeatures = ["views"]
   binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -751,6 +751,12 @@ enum XEngagementStatus {
   CANCELLED
 }
 
+enum XDiscoveredStatus {
+  ACTIVE
+  ENGAGED
+  SKIPPED
+}
+
 model XConnectSetting {
   id               String   @id @default(cuid())
   userId           Int
@@ -775,23 +781,25 @@ model XConnectSetting {
 }
 
 model XDiscoveredPost {
-  id               String   @id @default(cuid())
+  id               String              @id @default(cuid())
   userId           Int
   xPostId          String
   authorId         String
   authorHandle     String
   authorName       String?
-  authorIsFollowed Boolean  @default(false)
-  text             String   @db.Text
-  likeCount        Int      @default(0)
-  replyCount       Int      @default(0)
+  authorIsFollowed Boolean             @default(false)
+  text             String              @db.Text
+  likeCount        Int                 @default(0)
+  replyCount       Int                 @default(0)
   lang             String?
-  discoveredAt     DateTime @default(now())
-  lastSeenAt       DateTime @default(now())
+  discoveredAt     DateTime            @default(now())
+  lastSeenAt       DateTime            @default(now())
+  status           XDiscoveredStatus   @default(ACTIVE)
 
   @@unique([userId, xPostId])
   @@index([userId, authorIsFollowed])
   @@index([discoveredAt])
+  @@index([userId, status])
 }
 
 model XEngagementJob {

@@ -67,6 +67,16 @@ export default function XConnectEngagement() {
     },
   });
 
+  const markPostsMutation = trpc.viewer.xConnect.markPosts.useMutation({
+    onSuccess: (data) => {
+      postsQuery.refetch();
+      statsQuery.refetch();
+    },
+    onError: (error) => {
+      showToast(error.message, "error");
+    },
+  });
+
   const posts = postsQuery.data?.posts || [];
   const stats = statsQuery.data;
 
@@ -89,6 +99,19 @@ export default function XConnectEngagement() {
     );
   };
 
+  const handleSkipPost = (postId: string) => {
+    markPostsMutation.mutate(
+      { xPostIds: [postId], status: "SKIPPED" },
+      {
+        onSuccess: () => {
+          showToast("Post skipped", "success");
+          // Remove from selection if it was selected
+          setSelectedPostIds((prev) => prev.filter((id) => id !== postId));
+        },
+      }
+    );
+  };
+
   const handleStartScan = () => {
     scanMutation.mutate({ force: true });
   };
@@ -99,6 +122,20 @@ export default function XConnectEngagement() {
       return;
     }
     setEngageModalOpen(true);
+  };
+
+  const handleEngageSuccess = () => {
+    // Mark selected posts as ENGAGED
+    markPostsMutation.mutate(
+      { xPostIds: selectedPostIds, status: "ENGAGED" },
+      {
+        onSuccess: () => {
+          setSelectedPostIds([]);
+          setEngageModalOpen(false);
+          showToast("Engagement jobs queued successfully!", "success");
+        },
+      }
+    );
   };
 
   // Check if user has X credential
@@ -195,6 +232,7 @@ export default function XConnectEngagement() {
                   post={post}
                   isSelected={selectedPostIds.includes(post.xPostId)}
                   onToggle={handleTogglePost}
+                  onSkip={handleSkipPost}
                   template={bulkTemplate}
                   topics={stats?.settings.topics || []}
                 />
@@ -266,11 +304,7 @@ export default function XConnectEngagement() {
         topics={stats?.settings.topics || []}
         dailyMax={stats?.dailyMax || 20}
         todayPosted={stats?.todayPosted || 0}
-        onSuccess={() => {
-          setSelectedPostIds([]);
-          setEngageModalOpen(false);
-          showToast("Engagement jobs queued successfully!", "success");
-        }}
+        onSuccess={handleEngageSuccess}
       />
 
       {/* Scroll to Top Button */}

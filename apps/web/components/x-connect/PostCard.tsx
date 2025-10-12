@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { Button, Badge, Checkbox } from "@quillsocial/ui";
-import { ExternalLink, MessageSquare, Heart, ChevronDown, ChevronUp } from "lucide-react";
+import { ExternalLink, MessageSquare, Heart, ChevronDown, ChevronUp, X } from "lucide-react";
 import { format } from "date-fns";
 
 interface PostCardProps {
@@ -21,11 +21,12 @@ interface PostCardProps {
   };
   isSelected: boolean;
   onToggle: (postId: string) => void;
+  onSkip?: (postId: string) => void;
   template: string;
   topics: string[];
 }
 
-export default function PostCard({ post, isSelected, onToggle, template, topics }: PostCardProps) {
+export default function PostCard({ post, isSelected, onToggle, onSkip, template, topics }: PostCardProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [previewText, setPreviewText] = useState("");
 
@@ -45,6 +46,13 @@ export default function PostCard({ post, isSelected, onToggle, template, topics 
     setShowPreview(!showPreview);
   };
 
+  const handleSkip = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onSkip) {
+      onSkip(post.xPostId);
+    }
+  };
+
   return (
     <div
       className={`border-subtle relative overflow-hidden rounded-2xl border bg-card p-4 shadow-sm transition-all hover:shadow-md ${
@@ -52,7 +60,16 @@ export default function PostCard({ post, isSelected, onToggle, template, topics 
       }`}
     >
       {/* Checkbox */}
-      <div className="absolute right-4 top-4 z-10">
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+        {onSkip && (
+          <button
+            onClick={handleSkip}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10 text-red-600 transition-all hover:bg-red-500/20 hover:scale-110"
+            title="Skip this post"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
         <input
           type="checkbox"
           checked={isSelected}
