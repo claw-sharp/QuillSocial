@@ -57,7 +57,31 @@ export async function processXEngagementJobs(): Promise<ProcessResult> {
       jobCount: jobs.length
     });
 
+    // Track rate-limited users to prevent bottlenecks
+    // If a user hits rate limit, skip their remaining jobs in this batch
+    const rateLimitedUsers = new Set<number>();
+
     for (const job of jobs) {
+      // Skip if user is already rate-limited in this batch
+      if (rateLimitedUsers.has(job.userId)) {
+        log.warn(`Skipping job ${job.id} - user ${job.userId} is rate-limited`, {
+          jobId: job.id,
+          userId: job.userId,
+          xPostId: job.xPostId,
+        });
+
+        // Reschedule for 30 minutes later to avoid blocking other users
+        const rescheduleTime = new Date(Date.now() + 30 * 60 * 1000);
+        await prisma.xEngagementJob.update({
+          where: { id: job.id },
+          data: {
+            scheduledAt: rescheduleTime,
+          },
+        });
+
+        log.info(`Job ${job.id} rescheduled to ${rescheduleTime.toISOString()} due to user rate limit`);
+        continue;
+      }
       try {
         log.info(`Processing job ${job.id}`, {
           jobId: job.id,
@@ -216,10 +240,37 @@ export async function processXEngagementJobs(): Promise<ProcessResult> {
           attempt: job.attempt,
         });
 
-        // Create notification for the error
+        // Check if this is a rate limit error
         const errorCode = error?.code || error?.statusCode;
-        if (errorCode === 429 || error.message?.includes("429") || error.message?.toLowerCase().includes("rate limit")) {
+        const isRateLimitError = errorCode === 429 || error.message?.includes("429") || error.message?.toLowerCase().includes("rate limit");
+
+        // Create notification for the error
+        if (isRateLimitError) {
           await createTwitterRateLimitNotification(job.userId, error);
+
+          // Mark user as rate-limited to skip their remaining jobs in this batch
+          rateLimitedUsers.add(job.userId);
+          log.warn(`User ${job.userId} marked as rate-limited - will skip their remaining jobs in this batch`, {
+            userId: job.userId,
+            jobId: job.id,
+          });
+
+          // Reschedule ALL pending jobs for this user to avoid bottleneck
+          const rescheduledCount = await prisma.xEngagementJob.updateMany({
+            where: {
+              userId: job.userId,
+              status: "PENDING",
+              id: { not: job.id }, // Exclude current job (will be handled below)
+            },
+            data: {
+              scheduledAt: new Date(Date.now() + 15 * 60 * 1000), // +15 minutes
+            },
+          });
+
+          log.info(`Rescheduled ${rescheduledCount.count} pending jobs for rate-limited user ${job.userId}`, {
+            userId: job.userId,
+            rescheduledCount: rescheduledCount.count,
+          });
         } else {
           await createTwitterErrorNotification(job.userId, error, "X engagement job");
         }
@@ -282,12 +333,18 @@ export async function processXEngagementJobs(): Promise<ProcessResult> {
     }
 
     const duration = Date.now() - startTime;
+    const uniqueUsers = new Set(jobs.map(j => j.userId)).size;
+
     log.info("X engagement job processing completed", {
       duration: `${duration}ms`,
       totalProcessed: result.processed,
       succeeded: result.succeeded,
       failed: result.failed,
       errorCount: result.errors.length,
+      uniqueUsers,
+      rateLimitedUsers: rateLimitedUsers.size,
+      rateLimitedUserIds: Array.from(rateLimitedUsers),
+      bottlenecksPrevented: rateLimitedUsers.size > 0,
     });
   } catch (error: any) {
     log.error("Fatal error in processXEngagementJobs", {

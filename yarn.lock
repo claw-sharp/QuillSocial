@@ -4279,18 +4279,6 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@quillsocial/twitterv1social@workspace:packages/app-store/twitterv1social":
-  version: 0.0.0-use.local
-  resolution: "@quillsocial/twitterv1social@workspace:packages/app-store/twitterv1social"
-  dependencies:
-    "@quillsocial/prisma": "*"
-    "@quillsocial/types": "*"
-    buffer: ^6.0.3
-    lru-cache: ^10.1.0
-    twitter-api-v2: ^1.15.2
-  languageName: unknown
-  linkType: soft
-
 "@quillsocial/typeform@workspace:packages/app-store/typeform":
   version: 0.0.0-use.local
   resolution: "@quillsocial/typeform@workspace:packages/app-store/typeform"
@@ -4495,18 +4483,6 @@ __metadata:
     "@quillsocial/prisma": "*"
     "@quillsocial/types": "*"
     react-hook-form: ^7.43.3
-    twitter-api-v2: ^1.15.2
-  languageName: unknown
-  linkType: soft
-
-"@quillsocial/xsocial@workspace:packages/app-store/xsocial":
-  version: 0.0.0-use.local
-  resolution: "@quillsocial/xsocial@workspace:packages/app-store/xsocial"
-  dependencies:
-    "@quillsocial/prisma": "*"
-    "@quillsocial/types": "*"
-    buffer: ^6.0.3
-    lru-cache: ^10.1.0
     twitter-api-v2: ^1.15.2
   languageName: unknown
   linkType: soft
@@ -14341,7 +14317,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lru-cache@npm:^10.0.1, lru-cache@npm:^10.1.0, lru-cache@npm:^10.2.0":
+"lru-cache@npm:^10.0.1, lru-cache@npm:^10.2.0":
   version: 10.4.3
   resolution: "lru-cache@npm:10.4.3"
   checksum: 6476138d2125387a6d20f100608c2583d415a4f64a0fecf30c9e2dda976614f09cad4baa0842447bd37dd459a7bd27f57d9d8f8ce558805abd487c583f3d774a
