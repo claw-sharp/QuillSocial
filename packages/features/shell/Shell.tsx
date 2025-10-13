@@ -621,6 +621,16 @@ const navigation: NavigationItemType[] = [
       return path.startsWith("/settings");
     },
   },
+  {
+    name: "Users",
+    href: "/users",
+    icon: Users,
+    isAdminOnly: true,
+    isCurrent: ({ router }) => {
+      const path = router.asPath.split("?")[0];
+      return path.startsWith("/users");
+    },
+  },
 
   {
     name: "Billing",
