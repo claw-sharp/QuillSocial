@@ -1,6 +1,5 @@
 import PluginComment from "./PluginComment";
 import ModalUpgrade from "@quillsocial/features/payments/ModalUpgrade";
-import { checkUserToUsePlug } from "@quillsocial/features/shell/SocialAvatar";
 import { TWITTER_APP_ID } from "@quillsocial/lib/constants";
 import { Dialog, DialogContent, DialogFooter, Switch } from "@quillsocial/ui";
 import { Button, showToast } from "@quillsocial/ui";
@@ -80,7 +79,6 @@ export const PostNowDialog: React.FC<PostNowDialogProps> = ({
       comment: comment,
     });
   };
-  const checkPlug = checkUserToUsePlug();
   return (
     <>
       <Dialog open={open}>
@@ -101,7 +99,7 @@ export const PostNowDialog: React.FC<PostNowDialogProps> = ({
               These settings will affect this post only.
             </span>
           </div>
-          {checkPlug && isPluginCommentSupported && (
+          {isPluginCommentSupported && (
             <div className="mt-2 flex">
               <Switch
                 checked={isChecked}
