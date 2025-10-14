@@ -383,6 +383,161 @@ export const getRecentlySearchedKeywords = async (credentialId: number) => {
   }
 };
 
+/**
+ * Reply to a Threads post
+ *
+ * @param credentialId - The credential ID for authentication
+ * @param options - Reply options
+ * @returns Reply result with id and permalink, or null on error
+ */
+export const replyToPost = async (
+  credentialId: number,
+  options: {
+    replyToId: string; // The Threads post ID to reply to
+    text: string; // Reply text content
+    mediaType?: "TEXT" | "IMAGE" | "VIDEO"; // Media type (defaults to TEXT)
+    mediaUrl?: string; // Media URL (required if mediaType is IMAGE or VIDEO)
+  }
+) => {
+  console.debug("[threadsManager] replyToPost() start", {
+    credentialId,
+    replyToId: options.replyToId,
+  });
+
+  // Fetch credential
+  const credential = await prisma.credential.findUnique({
+    where: { id: credentialId },
+  });
+
+  if (!credential) {
+    console.error("Error replying to Threads post: credential not found", {
+      credentialId,
+    });
+    return null;
+  }
+
+  // Parse the credential key to get access token and user ID
+  let accessToken: string | undefined;
+  let userId: string | undefined;
+  try {
+    let rawKey: any = credential.key as any;
+
+    try {
+      rawKey = JSON.parse(rawKey);
+    } catch {
+      try {
+        accessToken = rawKey.access_token;
+        userId = rawKey.user_id || undefined;
+      } catch (e) {
+        console.error("Error parsing Threads credential key", e, {
+          credentialId: credential.id,
+        });
+      }
+    }
+
+    console.debug("[threadsManager] credential parsing result", {
+      credentialId: credential.id,
+      accessTokenPresent: !!accessToken,
+      userId,
+    });
+  } catch (e) {
+    console.error("Error parsing Threads credential key", e, {
+      credentialId: credential.id,
+    });
+  }
+
+  if (!accessToken) {
+    console.error("Error replying to Threads post: accessToken is null", {
+      credentialId: credential.id,
+    });
+    return null;
+  }
+
+  // Using "me" is supported by Threads
+  const user = userId || "me";
+
+  try {
+    // Step 1: Create reply container
+    const mediaType = options.mediaType || "TEXT";
+    const createParams: Record<string, string> = {
+      media_type: mediaType,
+      text: options.text,
+      reply_to_id: options.replyToId,
+      access_token: accessToken,
+    };
+
+    // Add media URL if provided and media type is IMAGE or VIDEO
+    if (options.mediaUrl && (mediaType === "IMAGE" || mediaType === "VIDEO")) {
+      const mediaField = mediaType === "VIDEO" ? "video_url" : "image_url";
+      createParams[mediaField] = options.mediaUrl;
+
+      // Validate URL format
+      if (!/^https?:\/\//i.test(options.mediaUrl)) {
+        throw new Error(
+          "Threads requires public media URLs (no data URIs). Upload media to storage and provide HTTPS URLs."
+        );
+      }
+    }
+
+    console.debug("[threadsManager] creating reply container", {
+      user,
+      replyToId: options.replyToId,
+      mediaType,
+      hasMediaUrl: !!options.mediaUrl,
+    });
+
+    const createResp = await postForm(`${GRAPH}/${user}/threads`, createParams);
+    const containerId = createResp.data.id;
+
+    console.debug("[threadsManager] reply container created", {
+      containerId,
+    });
+
+    // Step 2: If media is involved, wait for it to be processed
+    if (options.mediaUrl && (mediaType === "IMAGE" || mediaType === "VIDEO")) {
+      console.debug("[threadsManager] waiting for media to be processed", {
+        containerId,
+      });
+      await checkMediaLoaded(containerId, accessToken);
+    } else {
+      // For text-only replies, wait a short time to ensure processing
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    // Step 3: Publish the reply
+    console.debug("[threadsManager] publishing reply", { containerId });
+
+    const publishResp = await postForm(`${GRAPH}/${user}/threads_publish`, {
+      creation_id: containerId,
+      access_token: accessToken,
+    });
+
+    const replyId = publishResp.data.id;
+
+    console.debug("[threadsManager] reply published successfully", {
+      replyId,
+    });
+
+    // Step 4: Fetch permalink for the reply
+    const linkInfo = await getLinkbyId(replyId, accessToken);
+
+    return {
+      id: replyId,
+      permalink: linkInfo?.permalink,
+    };
+  } catch (error: any) {
+    console.error(
+      "Error replying to Threads post:",
+      error.response?.data || error.message,
+      {
+        credentialId,
+        replyToId: options.replyToId,
+      }
+    );
+    return null;
+  }
+};
+
 // Poll a container until it is ready
 async function checkMediaLoaded(
   mediaContainerId: string,
