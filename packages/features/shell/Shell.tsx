@@ -658,6 +658,15 @@ const navigation: NavigationItemType[] = [
     },
   },
   {
+    name: "Ideas & Pillars",
+    href: "/ideas-pillars",
+    icon: Lightbulb,
+    isCurrent: ({ router }) => {
+      const path = router.asPath.split("?")[0];
+      return path.startsWith("/ideas-pillars");
+    },
+  },
+  {
     name: "Calendar",
     href: "/calendar",
     icon: CalendarDays,
