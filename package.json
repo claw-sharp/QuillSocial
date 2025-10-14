@@ -18,6 +18,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "prisma": "yarn workspace @quillsocial/prisma prisma",
     "prisma:studio": "yarn workspace @quillsocial/prisma prisma studio",
+    "seed:pillars": "npx tsx scripts/seed-pillars.ts",
     "start": "turbo run start --filter=@quillsocial/web",
     "type-check": "turbo run type-check",
     "type-check:ci": "turbo run type-check:ci --log-prefix=none",

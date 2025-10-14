@@ -13,6 +13,7 @@ import { socialsRouter } from "./socials/_router";
 import { viewerTeamsRouter } from "./teams/_router";
 import { xConnectRouter } from "./xConnect";
 import { threadsConnectRouter } from "./threadsConnect";
+import { ideasPillarsRouter } from "./ideasPillars/ideasPillars";
 
 export const viewerRouter = mergeRouters(
   loggedInViewerRouter,
@@ -31,5 +32,6 @@ export const viewerRouter = mergeRouters(
     xConnect: xConnectRouter,
     threadsConnect: threadsConnectRouter,
     notifications: notificationsRouter,
+    ideasPillars: ideasPillarsRouter,
   })
 );

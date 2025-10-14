@@ -139,6 +139,8 @@ model User {
   xConnectSetting      XConnectSetting?
   threadsConnectSetting ThreadsConnectSetting?
   notifications        Notification[]
+  pillars              Pillar[]
+  ideas                Idea[]
 
   @@unique([email])
   @@unique([email, username])
@@ -952,3 +954,66 @@ model Notification {
   @@index([userId, isRead])
   @@index([userId, createdAt])
 }
+
+// ============================================================================
+// Ideas & Pillars Models
+// ============================================================================
+
+enum IdeaStatus {
+  RAW
+  OUTLINED
+}
+
+model Pillar {
+  id        String    @id @default(cuid())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  color     String    @default("bg-indigo-600")
+  order     Int       @default(0)
+  deletedAt DateTime?
+  ideas     Idea[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([userId, deletedAt])
+}
+
+model Idea {
+  id        String     @id @default(cuid())
+  userId    Int
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pillarId  String
+  pillar    Pillar     @relation(fields: [pillarId], references: [id], onDelete: Cascade)
+  title     String     @db.Text
+  status    IdeaStatus @default(RAW)
+  tags      String[]   @default([])
+  outline   Outline?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([pillarId])
+  @@index([userId, status])
+}
+
+enum OutlineTone {
+  FRIENDLY
+  AUTHORITATIVE
+  CONTRARIAN
+}
+
+model Outline {
+  id        String      @id @default(cuid())
+  ideaId    String      @unique
+  idea      Idea        @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  text      String      @db.Text
+  tone      OutlineTone @default(FRIENDLY)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([ideaId])
+}
+
