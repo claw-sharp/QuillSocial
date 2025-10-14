@@ -2,6 +2,54 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import authedProcedure from "../../../procedures/authedProcedure";
 import { router } from "../../../trpc";
+import { withUsageLogging } from "@quill/agent";
+import prisma from "@quillsocial/prisma";
+
+// Helper function to generate outline with proper user tracking
+async function generateOutlineForUser(
+  idea: string,
+  tone: "friendly" | "authoritative" | "contrarian",
+  userId: number
+): Promise<string> {
+  const agentContext = {
+    prisma,
+    openaiApiKey: process.env.OPENAI_API_KEY,
+    logger: console,
+  };
+
+  // Use withUsageLogging directly with the correct userId
+  const callOpenAI = withUsageLogging(agentContext, {
+    userId,
+    requestType: "expand_outline",
+    model: "gpt-4o-mini",
+    apiEndpoint: "/api/trpc/viewer.ideasPillars.generateOutline",
+  });
+
+  const systemPrompt = `You are a content strategist helping to expand ideas into detailed outlines.
+Create a structured outline that:
+- Has 3-5 main sections
+- Each section has 2-4 key points
+- Uses a ${tone} tone throughout
+- Is suitable for social media content or blog posts
+- Focuses on actionable insights and clear takeaways`;
+
+  const userPrompt = `Expand this idea into a detailed outline:
+
+"${idea}"
+
+Tone: ${tone}
+
+Provide a clear, numbered outline with sections and subsections.`;
+
+  const response = await callOpenAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ], {
+    temperature: 0.7,
+  });
+
+  return response.text;
+}
 
 // Input schemas
 const createPillarSchema = z.object({
@@ -455,13 +503,42 @@ export const ideasPillarsRouter = router({
         });
       }
 
-      // Generate outline based on tone (mock for now)
-      const generatedText = generateMockOutline(idea.title, input.tone);
+      try {
+        // Validate we have the idea title
+        if (!idea.title || idea.title.trim().length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Idea title is empty",
+          });
+        }
 
-      return {
-        text: generatedText,
-        tone: input.tone,
-      };
+        // Convert tone from uppercase to lowercase
+        const tone = input.tone.toLowerCase() as "friendly" | "authoritative" | "contrarian";
+
+        console.log("Generating outline:", {
+          ideaId: idea.id,
+          userId: ctx.user.id,
+          tone
+        });
+
+        // Generate outline with proper user tracking
+        const outlineText = await generateOutlineForUser(idea.title, tone, ctx.user.id);
+
+        console.log("Outline generated successfully");
+        console.log("Generated outline length:", outlineText.length);
+        console.log("Generated outline preview:", outlineText.substring(0, 100));
+
+        return {
+          text: outlineText,
+          tone: input.tone,
+        };
+      } catch (error) {
+        console.error("Error generating outline:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to generate outline. Please try again.",
+        });
+      }
     }),
 
   deleteOutline: authedProcedure
@@ -496,52 +573,3 @@ export const ideasPillarsRouter = router({
       return { success: true };
     }),
 });
-
-// Helper function for mock outline generation
-function generateMockOutline(
-  ideaContent: string,
-  tone: "FRIENDLY" | "AUTHORITATIVE" | "CONTRARIAN"
-): string {
-  const templates = {
-    FRIENDLY: {
-      hook: "Most of us overcomplicate this.",
-      lessons: [
-        "Start with one clear next step.",
-        "Make the win feel achievable in 2 minutes.",
-        "Close the loop with one simple nudge.",
-      ],
-      example: "Real results from a simple change.",
-      cta: 'Comment "checklist" and I\'ll share the template.',
-    },
-    AUTHORITATIVE: {
-      hook: "Success begins at first contact.",
-      lessons: [
-        "Define a single activation event.",
-        "Enforce a guided path to it.",
-        "Instrument feedback at the moment of value.",
-      ],
-      example: "Measurable improvement post-implementation.",
-      cta: "Get the activation checklist.",
-    },
-    CONTRARIAN: {
-      hook: "The obvious solution isn't your problem.",
-      lessons: [
-        "The real issue is elsewhere—fix that first.",
-        "Ship a 2-minute win, not a tour.",
-        "Ask for feedback when value lands.",
-      ],
-      example: "Unexpected results from a counterintuitive approach.",
-      cta: 'Want the script? Say "script".',
-    },
-  };
-
-  const template = templates[tone];
-  const ideaSnippet = ideaContent.slice(0, 40);
-
-  return `Hook: ${template.hook}
-Lesson 1: ${template.lessons[0]}
-Lesson 2: ${template.lessons[1]}
-Lesson 3: ${template.lessons[2]}
-Example: ${ideaSnippet}... — ${template.example}
-CTA: ${template.cta}`;
-}

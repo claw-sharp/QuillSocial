@@ -20,52 +20,6 @@ import {
 import React, { useEffect, useState } from "react";
 import type { Idea, Outline, Tone } from "./types";
 
-// Mock outline generation based on tone and idea content
-function generateMockOutline(ideaContent: string, tone: Tone): string {
-  const templates = {
-    friendly: {
-      hook: "Most of us overcomplicate this.",
-      lessons: [
-        "Start with one clear next step.",
-        "Make the win feel achievable in 2 minutes.",
-        "Close the loop with one simple nudge.",
-      ],
-      example: "Real results from a simple change.",
-      cta: 'Comment "checklist" and I\'ll share the template.',
-    },
-    authoritative: {
-      hook: "Success begins at first contact.",
-      lessons: [
-        "Define a single activation event.",
-        "Enforce a guided path to it.",
-        "Instrument feedback at the moment of value.",
-      ],
-      example: "Measurable improvement post-implementation.",
-      cta: "Get the activation checklist.",
-    },
-    contrarian: {
-      hook: "The obvious solution isn't your problem.",
-      lessons: [
-        "The real issue is elsewhere—fix that first.",
-        "Ship a 2-minute win, not a tour.",
-        "Ask for feedback when value lands.",
-      ],
-      example: "Unexpected results from a counterintuitive approach.",
-      cta: 'Want the script? Say "script".',
-    },
-  };
-
-  const template = templates[tone];
-  const ideaSnippet = ideaContent.slice(0, 40);
-
-  return `Hook: ${template.hook}
-Lesson 1: ${template.lessons[0]}
-Lesson 2: ${template.lessons[1]}
-Lesson 3: ${template.lessons[2]}
-Example: ${ideaSnippet}... — ${template.example}
-CTA: ${template.cta}`;
-}
-
 // OutlineDrawer Component Props
 interface OutlineDrawerProps {
   open: boolean;
@@ -74,6 +28,8 @@ interface OutlineDrawerProps {
   onSave: (outline: Outline) => void;
   onPromote: (idea: Idea) => void;
   onClose: () => void;
+  onGenerate?: (ideaId: string, tone: Tone) => Promise<{ text: string; tone: string }>;
+  isGenerating?: boolean;
 }
 
 export function OutlineDrawer({
@@ -83,44 +39,63 @@ export function OutlineDrawer({
   onSave,
   onPromote,
   onClose,
+  onGenerate,
+  isGenerating: externalIsGenerating = false,
 }: OutlineDrawerProps) {
   const [outlineDraft, setOutlineDraft] = useState("");
   const [tone, setTone] = useState<Tone>("friendly");
   const [isDirty, setIsDirty] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [lastIdeaId, setLastIdeaId] = useState<string | null>(null);
 
-  // Initialize outline when drawer opens
+  const actuallyGenerating = externalIsGenerating || isGenerating;
+
+  // Initialize outline when drawer opens or idea changes
   useEffect(() => {
-    if (open && idea) {
-      console.log("outline_opened", { ideaId: idea.id });
+    // Only reset if drawer just opened or if we switched to a different idea
+    const ideaChanged = idea && idea.id !== lastIdeaId;
+
+    if (open && idea && (ideaChanged || !lastIdeaId)) {
+      console.log("outline_opened or idea changed", { ideaId: idea.id, ideaChanged });
+      setLastIdeaId(idea.id);
 
       if (existingOutline) {
         setOutlineDraft(existingOutline.text);
         setTone(existingOutline.metadata.tone);
         setIsDirty(false);
       } else {
-        // Generate initial outline
-        const initialOutline = generateMockOutline(idea.title, tone);
-        setOutlineDraft(initialOutline);
+        // Clear the draft for new outlines - user will click generate
+        setOutlineDraft("");
         setIsDirty(false);
       }
     }
-  }, [open, idea, existingOutline, tone]);
+
+    // Reset lastIdeaId when drawer closes
+    if (!open) {
+      setLastIdeaId(null);
+    }
+  }, [open, idea, existingOutline, lastIdeaId]);
 
   // Handle regenerate
-  const handleRegenerate = () => {
-    if (!idea) return;
+  const handleRegenerate = async () => {
+    if (!idea || !onGenerate) return;
 
     console.log("outline_generated", { ideaId: idea.id, tone });
     setIsGenerating(true);
 
-    // Simulate generation delay
-    setTimeout(() => {
-      const newOutline = generateMockOutline(idea.title, tone);
-      setOutlineDraft(newOutline);
+    try {
+      const result = await onGenerate(idea.id, tone);
+      console.log("Generated outline result:", result);
+      console.log("Setting outline text:", result.text);
+      setOutlineDraft(result.text);
       setIsDirty(true);
+      showToast("Outline generated successfully", "success");
+    } catch (error) {
+      console.error("Failed to generate outline:", error);
+      showToast("Failed to generate outline. Please try again.", "error");
+    } finally {
       setIsGenerating(false);
-    }, 800 + Math.random() * 400);
+    }
   };
 
   // Handle save
@@ -255,12 +230,12 @@ export function OutlineDrawer({
             <Button
               color="secondary"
               onClick={handleRegenerate}
-              disabled={isGenerating}
-              StartIcon={isGenerating ? Loader2 : RefreshCw}
-              className={isGenerating ? "animate-spin" : ""}
+              disabled={actuallyGenerating || !onGenerate}
+              StartIcon={actuallyGenerating ? Loader2 : RefreshCw}
+              className={actuallyGenerating ? "animate-spin" : ""}
               data-testid="outline-regenerate"
             >
-              {isGenerating ? "Generating..." : "Regenerate (mock)"}
+              {actuallyGenerating ? "Generating..." : "Generate Outline"}
             </Button>
           </div>
         </div>

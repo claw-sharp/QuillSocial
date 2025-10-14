@@ -79,6 +79,12 @@ function IdeasPillarsPage() {
     },
   });
 
+  const generateOutlineMutation = trpc.viewer.ideasPillars.generateOutline.useMutation({
+    onError: (error) => {
+      showToast(error.message || "Failed to generate outline", "error");
+    },
+  });
+
   // Set initial pillar when pillars load
   useEffect(() => {
     if (pillars.length > 0 && !selectedPillar) {
@@ -120,6 +126,15 @@ function IdeasPillarsPage() {
 
   const handleCloseOutlineDrawer = () => {
     setOpenOutlineForIdeaId(null);
+  };
+
+  const handleGenerateOutline = async (ideaId: string, tone: "friendly" | "authoritative" | "contrarian") => {
+    const toneUppercase = tone.toUpperCase() as "FRIENDLY" | "AUTHORITATIVE" | "CONTRARIAN";
+    const result = await generateOutlineMutation.mutateAsync({
+      ideaId,
+      tone: toneUppercase,
+    });
+    return result;
   };
 
   const handleCreateIdea = () => {
@@ -417,6 +432,8 @@ function IdeasPillarsPage() {
           onSave={handleSaveOutline}
           onPromote={handlePromoteToPost}
           onClose={handleCloseOutlineDrawer}
+          onGenerate={handleGenerateOutline}
+          isGenerating={generateOutlineMutation.isLoading}
         />
 
         {/* Pillar Manager Dialog */}
