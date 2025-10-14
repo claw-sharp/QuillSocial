@@ -889,6 +889,7 @@ model ThreadsDiscoveredPost {
   likeCount        Int                     @default(0)
   replyCount       Int                     @default(0)
   lang             String?
+  permalink        String?                 // Actual Threads post URL from API
   discoveredAt     DateTime                @default(now())
   lastSeenAt       DateTime                @default(now())
   status           ThreadsDiscoveredStatus @default(ACTIVE)

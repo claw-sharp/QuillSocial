@@ -34,6 +34,7 @@ export interface DiscoveredPost {
   replyCount: number;
   discoveredAt: Date;
   status: Exclude<DiscoveredStatus, "ALL">;
+  permalink?: string | null; // Actual post URL from API
 }
 
 export interface ConnectStats {

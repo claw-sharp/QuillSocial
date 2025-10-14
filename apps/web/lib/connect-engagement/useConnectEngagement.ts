@@ -211,6 +211,7 @@ export function useConnectEngagement({
     onSuccess: () => {
       postsQuery.refetch();
       statsQuery.refetch();
+      showToast("Post updated", "success");
     },
     onError: (error) => {
       showToast(error.message, "error");
@@ -220,6 +221,7 @@ export function useConnectEngagement({
     onSuccess: () => {
       postsQuery.refetch();
       statsQuery.refetch();
+      showToast("Post updated", "success");
     },
     onError: (error) => {
       showToast(error.message, "error");
@@ -260,16 +262,12 @@ export function useConnectEngagement({
   };
 
   const handleSkipPost = (postId: string) => {
-    const mutationInput = platform === "x"
-      ? { xPostIds: [postId], status: "SKIPPED" as const }
-      : { threadsPostIds: [postId], status: "SKIPPED" as const };
-
-    markPostsMutation.mutate(mutationInput as any, {
-      onSuccess: () => {
-        showToast("Post skipped", "success");
-        setSelectedPostIds((prev) => prev.filter((id) => id !== postId));
-      },
-    });
+    if (platform === "x") {
+      xMarkPostsMutation.mutate({ xPostIds: [postId], status: "SKIPPED" });
+    } else {
+      threadsMarkPostsMutation.mutate({ threadsPostIds: [postId], status: "SKIPPED" });
+    }
+    setSelectedPostIds((prev) => prev.filter((id) => id !== postId));
   };
 
   const handleStartScan = () => {
@@ -285,17 +283,13 @@ export function useConnectEngagement({
   };
 
   const handleEngageSuccess = () => {
-    const mutationInput = platform === "x"
-      ? { xPostIds: selectedPostIds, status: "QUEUED" as const }
-      : { threadsPostIds: selectedPostIds, status: "QUEUED" as const };
-
-    markPostsMutation.mutate(mutationInput as any, {
-      onSuccess: () => {
-        setSelectedPostIds([]);
-        setEngageModalOpen(false);
-        showToast("Engagement jobs queued successfully!", "success");
-      },
-    });
+    if (platform === "x") {
+      xMarkPostsMutation.mutate({ xPostIds: selectedPostIds, status: "QUEUED" });
+    } else {
+      threadsMarkPostsMutation.mutate({ threadsPostIds: selectedPostIds, status: "QUEUED" });
+    }
+    setSelectedPostIds([]);
+    setEngageModalOpen(false);
   };
 
   const handleGoToApps = () => {

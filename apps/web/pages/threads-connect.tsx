@@ -299,6 +299,7 @@ export default function ThreadsConnectEngagement() {
                   onSkip={handleSkipPost}
                   template={bulkTemplate}
                   topics={activeTopics}
+                  platform="threads"
                   onStatusChange={() => {
                     postsQuery.refetch();
                     statsQuery.refetch();

@@ -313,8 +313,8 @@ export const threadsConnectRouter = router({
 
         const searchResult = await threadsManager.searchByKeyword(credential.id, {
           query: hashtag,
-          searchType: "RECENT", // Get most recent posts
-          searchMode: "TAG", // Search by hashtag
+          searchType: "TOP", // Get most recent posts
+          searchMode: "KEYWORD", // Search by keyword
           limit: maxPerHashtag,
           fields: ["id", "text", "media_type", "permalink", "timestamp", "username", "like_count", "reply_count"],
         });
@@ -393,6 +393,7 @@ export const threadsConnectRouter = router({
             likeCount,
             replyCount,
             lang: settings.language || null, // Use settings language as fallback
+            permalink: post.permalink || null, // Store the actual permalink from API
             status: "ACTIVE",
           },
         });

@@ -20,17 +20,43 @@ interface PostCardProps {
     replyCount: number;
     discoveredAt: Date;
     status: "ACTIVE" | "QUEUED" | "ENGAGED" | "SKIPPED";
+    permalink?: string | null; // Add permalink field
   };
   onSkip?: (postId: string) => void;
   template: string;
   topics: string[];
   onStatusChange?: () => void;
+  platform?: "x" | "threads"; // Add platform prop
 }
 
-export default function PostCard({ post, onSkip, template, topics, onStatusChange }: PostCardProps) {
+export default function PostCard({ post, onSkip, template, topics, onStatusChange, platform = "x" }: PostCardProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [previewText, setPreviewText] = useState("");
   const [showEngageDialog, setShowEngageDialog] = useState(false);
+
+  // Platform-specific labels and URLs
+  const getPlatformUrl = () => {
+    // Use permalink from API if available (most reliable)
+    if (post.permalink) {
+      return post.permalink;
+    }
+
+    // Fallback to constructed URLs
+    if (platform === "threads") {
+      // Threads URL format
+      return `https://www.threads.net/@${post.authorHandle}/post/${post.xPostId}`;
+    }
+
+    // X (Twitter) URL format
+    return `https://twitter.com/${post.authorHandle}/status/${post.xPostId}`;
+  };
+
+  const platformLabels = {
+    viewLabel: platform === "threads" ? "View on Threads" : "View on X",
+    commentLabel: platform === "threads" ? "Reply" : "Comment",
+    engageLabel: platform === "threads" ? "Engage Reply" : "Engage Comment",
+    platformUrl: getPlatformUrl(),
+  };
 
   const commentMutation = trpc.viewer.xConnect.commentOnPost.useMutation({
     onSuccess: (data) => {
@@ -183,18 +209,18 @@ export default function PostCard({ post, onSkip, template, topics, onStatusChang
             onClick={handleTogglePreview}
             EndIcon={showPreview ? ChevronUp : ChevronDown}
           >
-            {showPreview ? "Hide" : "Engage"} Comment
+            {showPreview ? "Hide" : "Engage"} {platformLabels.commentLabel}
           </Button>
         )}
         <Button
           color="minimal"
           size="sm"
-          href={`https://twitter.com/${post.authorHandle}/status/${post.xPostId}`}
+          href={platformLabels.platformUrl}
           target="_blank"
           EndIcon={ExternalLink}
           className={post.status !== "ACTIVE" ? "ml-auto" : ""}
         >
-          View on X
+          {platformLabels.viewLabel}
         </Button>
       </div>
 
@@ -219,7 +245,7 @@ export default function PostCard({ post, onSkip, template, topics, onStatusChang
               loading={commentMutation.isLoading}
               disabled={!previewText || previewText.trim() === ""}
             >
-              Comment
+              {platformLabels.commentLabel}
             </Button>
             <Button
               color="secondary"
@@ -230,14 +256,17 @@ export default function PostCard({ post, onSkip, template, topics, onStatusChang
             >
               Copy
             </Button>
-            <Button
-              color="secondary"
-              size="sm"
-              StartIcon={UserPlus}
-              onClick={handleToEngage}
-            >
-              To Engage
-            </Button>
+            {/* Comment out To Engage button for Threads */}
+            {platform !== "threads" && (
+              <Button
+                color="secondary"
+                size="sm"
+                StartIcon={UserPlus}
+                onClick={handleToEngage}
+              >
+                To Engage
+              </Button>
+            )}
           </div>
         </div>
       )}
