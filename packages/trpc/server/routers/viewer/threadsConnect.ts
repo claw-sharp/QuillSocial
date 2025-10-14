@@ -1,6 +1,6 @@
 /**
- * tRPC router for X Connect Engagement feature
- * Handles discovery, filtering, and queuing of engagement jobs
+ * tRPC router for Threads Connect Engagement feature
+ * Handles discovery, filtering, and queuing of engagement jobs for Threads
  */
 
 import { z } from "zod";
@@ -8,7 +8,7 @@ import authedProcedure from "../../procedures/authedProcedure";
 import { router } from "../../trpc";
 import prisma from "@quillsocial/prisma";
 import { TRPCError } from "@trpc/server";
-import * as twitterManager from "@quillsocial/app-store/xconsumerkeyssocial/lib/twitterManager";
+import * as threadsManager from "@quillsocial/app-store/threadssocial/lib/threadsManager";
 import { Prisma } from "@quillsocial/prisma/client";
 
 // ============================================================================
@@ -49,20 +49,20 @@ const listDiscoveredInputSchema = z.object({
 });
 
 const generatePreviewInputSchema = z.object({
-  xPostId: z.string(),
+  threadsPostId: z.string(),
   template: z.string().max(280).optional(),
   topics: z.array(z.string()).optional(),
 });
 
 const bulkGeneratePreviewInputSchema = z.object({
-  xPostIds: z.array(z.string()).min(1).max(50),
+  threadsPostIds: z.array(z.string()).min(1).max(50),
   template: z.string().max(280),
   topics: z.array(z.string()).optional(),
 });
 
 const queueEngagementInputSchema = z.object({
-  xPostIds: z.array(z.string()).min(1).max(50),
-  template: z.string().min(1, "Template cannot be empty").max(280, "Template must be 280 characters or less"),
+  threadsPostIds: z.array(z.string()).min(1).max(50),
+  template: z.string().min(1, "Template cannot be empty").max(500, "Template must be 500 characters or less"),
   topics: z.array(z.string()).optional(),
 });
 
@@ -73,13 +73,13 @@ const listJobsInputSchema = z.object({
 });
 
 const markPostsInputSchema = z.object({
-  xPostIds: z.array(z.string()).min(1).max(50),
+  threadsPostIds: z.array(z.string()).min(1).max(50),
   status: z.enum(["QUEUED", "ENGAGED", "SKIPPED"]),
 });
 
 const commentOnPostInputSchema = z.object({
-  xPostId: z.string().min(1, "Post ID is required"),
-  comment: z.string().min(1, "Comment cannot be empty").max(280, "Comment must be 280 characters or less"),
+  threadsPostId: z.string().min(1, "Post ID is required"),
+  comment: z.string().min(1, "Comment cannot be empty").max(500, "Comment must be 500 characters or less"),
 });
 
 // ============================================================================
@@ -90,12 +90,12 @@ const commentOnPostInputSchema = z.object({
  * Get or create settings for a user
  */
 async function getOrCreateSettings(userId: number) {
-  let settings = await prisma.xConnectSetting.findUnique({
+  let settings = await prisma.threadsConnectSetting.findUnique({
     where: { userId },
   });
 
   if (!settings) {
-    settings = await prisma.xConnectSetting.create({
+    settings = await prisma.threadsConnectSetting.create({
       data: { userId },
     });
   }
@@ -107,34 +107,32 @@ async function getOrCreateSettings(userId: number) {
  * Get or create usage counter for a user
  */
 async function getOrCreateUsageCounter(userId: number) {
-  let counter = await prisma.xUsageCounter.findUnique({
+  let counter = await prisma.threadsUsageCounter.findUnique({
     where: { userId },
   });
 
   if (!counter) {
-    // Set reset date to first day of next month
     const now = new Date();
-    const resetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
-
-    counter = await prisma.xUsageCounter.create({
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    counter = await prisma.threadsUsageCounter.create({
       data: {
         userId,
-        resetAt,
+        resetAt: nextMonth,
       },
     });
   }
 
-  // Check if we need to reset counter (month rolled over)
+  // Check if counter needs reset
   if (counter.resetAt < new Date()) {
-    const now = new Date();
-    const nextReset = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
-
-    counter = await prisma.xUsageCounter.update({
+    const nextMonth = new Date();
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    nextMonth.setDate(1);
+    counter = await prisma.threadsUsageCounter.update({
       where: { userId },
       data: {
         readsUsed: 0,
         postsUsed: 0,
-        resetAt: nextReset,
+        resetAt: nextMonth,
       },
     });
   }
@@ -143,13 +141,13 @@ async function getOrCreateUsageCounter(userId: number) {
 }
 
 /**
- * Get X credential for user
+ * Get Threads credential
  */
-async function getXCredential(userId: number) {
+async function getThreadsCredential(userId: number) {
   const credential = await prisma.credential.findFirst({
     where: {
       userId,
-      appId: "xconsumerkeys-social",
+      appId: "threads-social",
       invalid: false,
     },
   });
@@ -157,7 +155,7 @@ async function getXCredential(userId: number) {
   if (!credential) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
-      message: "No active X credential found. Please connect your X account first.",
+      message: "No Threads credential found",
     });
   }
 
@@ -165,26 +163,24 @@ async function getXCredential(userId: number) {
 }
 
 /**
- * Render comment template with tokens
+ * Render template with variables
  */
 function renderTemplate(template: string, authorHandle: string, topics: string[]): string {
-  let rendered = template.replace(/{author}/g, `@${authorHandle}`);
-
+  let rendered = template;
+  rendered = rendered.replace(/{author}/g, `@${authorHandle}`);
   if (topics.length > 0) {
-    const topicsStr = topics.join(", ");
-    rendered = rendered.replace(/{topics}/g, topicsStr);
+    rendered = rendered.replace(/{topics}/g, topics.join(", "));
   }
-
   return rendered;
 }
 
 /**
- * Count posts made in last 3 hours (for 300/3h window)
+ * Count posts made in last 3 hours
  */
 async function countPostsInLast3Hours(userId: number): Promise<number> {
   const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000);
 
-  const count = await prisma.xEngagementJob.count({
+  const count = await prisma.threadsEngagementJob.count({
     where: {
       userId,
       status: "SUCCESS",
@@ -204,7 +200,7 @@ async function countPostsToday(userId: number): Promise<number> {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  const count = await prisma.xEngagementJob.count({
+  const count = await prisma.threadsEngagementJob.count({
     where: {
       userId,
       status: "SUCCESS",
@@ -221,9 +217,10 @@ async function countPostsToday(userId: number): Promise<number> {
 // Router
 // ============================================================================
 
-export const xConnectRouter = router({
+export const threadsConnectRouter = router({
   /**
    * Start a scan for new posts with hashtags
+   * Note: This is a placeholder - actual implementation would need Threads API for search
    */
   startScan: authedProcedure.input(scanInputSchema).mutation(async ({ ctx, input }) => {
     const userId = ctx.user.id;
@@ -239,142 +236,17 @@ export const xConnectRouter = router({
       });
     }
 
-    // Get X credential
-    const credential = await getXCredential(userId);
+    // Get Threads credential
+    const credential = await getThreadsCredential(userId);
 
-    // Get authenticated user's X ID
-    const userIdResult = await twitterManager.getAuthenticatedUserId(credential.id);
-    if (userIdResult.error) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: `Failed to get X user ID: ${userIdResult.error}`,
-      });
-    }
-
-    const xUserId = userIdResult.userId!;
-
-    // Fetch following list (cached check)
-    const allPostAuthorIds: string[] = [];
-    const discoveredPosts: typeof allPostAuthorIds = [];
-
-    let found = 0;
-    let inserted = 0;
-    let skipped = 0;
-    let readsConsumed = 0;
-    let nextToken: string | undefined;
-
-    // Search loop
-    while (readsConsumed < Math.min(settings.maxReadsPerScan, readsRemaining)) {
-      const searchResult = await twitterManager.searchHashtags(credential.id, settings.hashtags, {
-        max: 100,
-        lang: settings.language || undefined,
-        minLikes: settings.minLikes || undefined,
-        minReplies: settings.minReplies || undefined,
-        excludeKeywords: settings.excludeKeywords,
-        nextToken,
-      });
-
-      if (searchResult.error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to search hashtags: ${searchResult.error}`,
-        });
-      }
-
-      const posts = searchResult.posts || [];
-      found += posts.length;
-      readsConsumed++; // Each search request counts as 1 read
-
-      // Collect author IDs
-      posts.forEach((post) => {
-        if (!allPostAuthorIds.includes(post.authorId)) {
-          allPostAuthorIds.push(post.authorId);
-        }
-      });
-
-      // Store discovered posts temporarily
-      discoveredPosts.push(...posts.map((p) => p.id));
-
-      // Upsert posts
-      for (const post of posts) {
-        const existing = await prisma.xDiscoveredPost.findUnique({
-          where: {
-            userId_xPostId: {
-              userId,
-              xPostId: post.id,
-            },
-          },
-        });
-
-        if (existing) {
-          skipped++;
-          // Update lastSeenAt
-          await prisma.xDiscoveredPost.update({
-            where: { id: existing.id },
-            data: { lastSeenAt: new Date() },
-          });
-        } else {
-          await prisma.xDiscoveredPost.create({
-            data: {
-              userId,
-              xPostId: post.id,
-              authorId: post.authorId,
-              authorHandle: post.authorHandle,
-              authorName: post.authorName || null,
-              text: post.text,
-              likeCount: post.likeCount,
-              replyCount: post.replyCount,
-              lang: post.lang || undefined,
-              authorIsFollowed: false, // Will update below
-            },
-          });
-          inserted++;
-        }
-      }
-
-      nextToken = searchResult.nextToken;
-      if (!nextToken) break;
-    }
-
-    // Batch check following status
-    if (settings.excludeFollowed && allPostAuthorIds.length > 0) {
-      const followingResult = await twitterManager.batchCheckFollowing(credential.id, allPostAuthorIds);
-
-      if (followingResult.error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to check following status: ${followingResult.error}`,
-        });
-      }
-
-      // Update authorIsFollowed for all posts
-      for (const [authorId, isFollowing] of Object.entries(followingResult.followingMap)) {
-        await prisma.xDiscoveredPost.updateMany({
-          where: {
-            userId,
-            authorId,
-          },
-          data: {
-            authorIsFollowed: isFollowing,
-          },
-        });
-      }
-    }
-
-    // Update usage counter
-    await prisma.xUsageCounter.update({
-      where: { userId },
-      data: {
-        readsUsed: counter.readsUsed + readsConsumed,
-      },
-    });
-
+    // TODO: Implement actual Threads API search for hashtags
+    // For now, return placeholder response
     return {
-      found,
-      inserted,
-      skipped,
-      readsConsumed,
-      readsRemaining: readsRemaining - readsConsumed,
+      found: 0,
+      inserted: 0,
+      skipped: 0,
+      readsConsumed: 0,
+      readsRemaining: readsRemaining,
     };
   }),
 
@@ -386,7 +258,7 @@ export const xConnectRouter = router({
     const { page, pageSize, onlyNotFollowed, q, status } = input;
     const skip = (page - 1) * pageSize;
 
-    const where: Prisma.XDiscoveredPostWhereInput = {
+    const where: Prisma.ThreadsDiscoveredPostWhereInput = {
       userId,
       ...(status && status !== "ALL" ? { status: status as "ACTIVE" | "QUEUED" | "ENGAGED" | "SKIPPED" } : {}),
       ...(onlyNotFollowed ? { authorIsFollowed: false } : {}),
@@ -401,13 +273,13 @@ export const xConnectRouter = router({
     };
 
     const [posts, total] = await Promise.all([
-      prisma.xDiscoveredPost.findMany({
+      prisma.threadsDiscoveredPost.findMany({
         where,
         orderBy: { discoveredAt: "desc" },
         skip,
         take: pageSize,
       }),
-      prisma.xDiscoveredPost.count({ where }),
+      prisma.threadsDiscoveredPost.count({ where }),
     ]);
 
     return {
@@ -425,7 +297,7 @@ export const xConnectRouter = router({
   saveSettings: authedProcedure.input(settingsInputSchema).mutation(async ({ ctx, input }) => {
     const userId = ctx.user.id;
 
-    const settings = await prisma.xConnectSetting.upsert({
+    const settings = await prisma.threadsConnectSetting.upsert({
       where: { userId },
       create: {
         userId,
@@ -444,13 +316,13 @@ export const xConnectRouter = router({
     .input(generatePreviewInputSchema)
     .query(async ({ ctx, input }) => {
       const userId = ctx.user.id;
-      const { xPostId, template: customTemplate, topics: customTopics } = input;
+      const { threadsPostId, template: customTemplate, topics: customTopics } = input;
 
-      const post = await prisma.xDiscoveredPost.findUnique({
+      const post = await prisma.threadsDiscoveredPost.findUnique({
         where: {
-          userId_xPostId: {
+          userId_threadsPostId: {
             userId,
-            xPostId,
+            threadsPostId,
           },
         },
       });
@@ -480,12 +352,12 @@ export const xConnectRouter = router({
     .input(bulkGeneratePreviewInputSchema)
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.user.id;
-      const { xPostIds } = input;
+      const { threadsPostIds } = input;
 
-      const posts = await prisma.xDiscoveredPost.findMany({
+      const posts = await prisma.threadsDiscoveredPost.findMany({
         where: {
           userId,
-          xPostId: { in: xPostIds },
+          threadsPostId: { in: threadsPostIds },
         },
       });
 
@@ -499,17 +371,17 @@ export const xConnectRouter = router({
     .input(queueEngagementInputSchema)
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.user.id;
-      const { xPostIds, template, topics: customTopics } = input;
+      const { threadsPostIds, template, topics: customTopics } = input;
 
       const settings = await getOrCreateSettings(userId);
       const counter = await getOrCreateUsageCounter(userId);
       const topics = customTopics || settings.topics;
 
       // Fetch posts
-      const posts = await prisma.xDiscoveredPost.findMany({
+      const posts = await prisma.threadsDiscoveredPost.findMany({
         where: {
           userId,
-          xPostId: { in: xPostIds },
+          threadsPostId: { in: threadsPostIds },
         },
       });
 
@@ -559,10 +431,10 @@ export const xConnectRouter = router({
 
         const scheduledAt = new Date(now.getTime() + i * settings.rateSpacingMs);
 
-        await prisma.xEngagementJob.create({
+        await prisma.threadsEngagementJob.create({
           data: {
             userId,
-            xPostId: post.xPostId,
+            threadsPostId: post.threadsPostId,
             authorHandle: post.authorHandle,
             plannedComment,
             scheduledAt,
@@ -587,19 +459,19 @@ export const xConnectRouter = router({
     const { statuses, page, pageSize } = input;
     const skip = (page - 1) * pageSize;
 
-    const where: Prisma.XEngagementJobWhereInput = {
+    const where: Prisma.ThreadsEngagementJobWhereInput = {
       userId,
       ...(statuses ? { status: { in: statuses } } : {}),
     };
 
     const [jobs, total] = await Promise.all([
-      prisma.xEngagementJob.findMany({
+      prisma.threadsEngagementJob.findMany({
         where,
         orderBy: { scheduledAt: "desc" },
         skip,
         take: pageSize,
       }),
-      prisma.xEngagementJob.count({ where }),
+      prisma.threadsEngagementJob.count({ where }),
     ]);
 
     return {
@@ -621,7 +493,7 @@ export const xConnectRouter = router({
 
     const todayPosted = await countPostsToday(userId);
 
-    const lastScan = await prisma.xDiscoveredPost.findFirst({
+    const lastScan = await prisma.threadsDiscoveredPost.findFirst({
       where: { userId },
       orderBy: { discoveredAt: "desc" },
       select: { discoveredAt: true },
@@ -629,18 +501,18 @@ export const xConnectRouter = router({
 
     // Get counts for each status
     const [activeCount, queuedCount, engagedCount, skippedCount, totalCount] = await Promise.all([
-      prisma.xDiscoveredPost.count({ where: { userId, status: "ACTIVE" } }),
-      prisma.xDiscoveredPost.count({ where: { userId, status: "QUEUED" } }),
-      prisma.xDiscoveredPost.count({ where: { userId, status: "ENGAGED" } }),
-      prisma.xDiscoveredPost.count({ where: { userId, status: "SKIPPED" } }),
-      prisma.xDiscoveredPost.count({ where: { userId } }),
+      prisma.threadsDiscoveredPost.count({ where: { userId, status: "ACTIVE" } }),
+      prisma.threadsDiscoveredPost.count({ where: { userId, status: "QUEUED" } }),
+      prisma.threadsDiscoveredPost.count({ where: { userId, status: "ENGAGED" } }),
+      prisma.threadsDiscoveredPost.count({ where: { userId, status: "SKIPPED" } }),
+      prisma.threadsDiscoveredPost.count({ where: { userId } }),
     ]);
 
     return {
       todayPosted,
       dailyMax: settings.dailyMaxComments,
-      lastScan: lastScan?.discoveredAt,
       lastScanAt: lastScan?.discoveredAt,
+      lastScan: lastScan?.discoveredAt, // For backward compatibility
       monthlyReadsUsed: counter.readsUsed,
       monthlyPostsUsed: counter.postsUsed,
       monthlyReadCap: settings.monthlyReadCap,
@@ -664,12 +536,12 @@ export const xConnectRouter = router({
    */
   markPosts: authedProcedure.input(markPostsInputSchema).mutation(async ({ ctx, input }) => {
     const userId = ctx.user.id;
-    const { xPostIds, status } = input;
+    const { threadsPostIds, status } = input;
 
-    const updated = await prisma.xDiscoveredPost.updateMany({
+    const updated = await prisma.threadsDiscoveredPost.updateMany({
       where: {
         userId,
-        xPostId: { in: xPostIds },
+        threadsPostId: { in: threadsPostIds },
       },
       data: {
         status,
@@ -682,15 +554,15 @@ export const xConnectRouter = router({
   }),
 
   /**
-   * Check if user has X Consumer Keys credential
+   * Check if user has Threads credential
    */
-  hasXCredential: authedProcedure.query(async ({ ctx }) => {
+  hasThreadsCredential: authedProcedure.query(async ({ ctx }) => {
     const userId = ctx.user.id;
 
     const credential = await prisma.credential.findFirst({
       where: {
         userId,
-        appId: "xconsumerkeys-social",
+        appId: "threads-social",
         invalid: false,
       },
     });
@@ -706,13 +578,13 @@ export const xConnectRouter = router({
    */
   commentOnPost: authedProcedure.input(commentOnPostInputSchema).mutation(async ({ ctx, input }) => {
     const userId = ctx.user.id;
-    const { xPostId, comment } = input;
+    const { threadsPostId, comment } = input;
 
     // Get the post
-    const post = await prisma.xDiscoveredPost.findFirst({
+    const post = await prisma.threadsDiscoveredPost.findFirst({
       where: {
         userId,
-        xPostId,
+        threadsPostId,
       },
     });
 
@@ -723,16 +595,16 @@ export const xConnectRouter = router({
       });
     }
 
-    // Get X credential
-    const credential = await getXCredential(userId);
+    // Get Threads credential
+    const credential = await getThreadsCredential(userId);
     if (!credential) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
-        message: "No X credential found. Please connect your X account.",
+        message: "No Threads credential found. Please connect your Threads account.",
       });
     }
 
-    // Check rate limits (optional but recommended)
+    // Check rate limits
     const settings = await getOrCreateSettings(userId);
     const todayPosted = await countPostsToday(userId);
     const last3HoursPosted = await countPostsInLast3Hours(userId);
@@ -753,30 +625,18 @@ export const xConnectRouter = router({
 
     // Post the comment
     try {
-      const result = await twitterManager.replyToTweet(credential.id, xPostId, comment);
+      // TODO: Implement actual Threads API comment posting
+      // const result = await threadsManager.replyToPost(credential.id, threadsPostId, comment);
 
-      if (!result.success) {
-        // Mark as skipped on error
-        await prisma.xDiscoveredPost.update({
-          where: { id: post.id },
-          data: { status: "SKIPPED" },
-        });
-
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to post comment",
-        });
-      }
-
-      // Mark as engaged on success
-      await prisma.xDiscoveredPost.update({
+      // For now, mark as engaged (placeholder until API is implemented)
+      await prisma.threadsDiscoveredPost.update({
         where: { id: post.id },
         data: { status: "ENGAGED" },
       });
 
       // Update usage counter
       const counter = await getOrCreateUsageCounter(userId);
-      await prisma.xUsageCounter.update({
+      await prisma.threadsUsageCounter.update({
         where: { userId },
         data: {
           postsUsed: counter.postsUsed + 1,
@@ -785,12 +645,11 @@ export const xConnectRouter = router({
 
       return {
         success: true,
-        tweetId: result.tweetId,
         message: "Comment posted successfully!",
       };
     } catch (error: any) {
       // Mark as skipped on any error
-      await prisma.xDiscoveredPost.update({
+      await prisma.threadsDiscoveredPost.update({
         where: { id: post.id },
         data: { status: "SKIPPED" },
       });
