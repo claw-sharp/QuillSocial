@@ -1,7 +1,7 @@
 import React from "react";
-import type { AudienceStage, Plan, ToneOption } from "@components/copilot/types";
+import type { AudienceStage, EnhancedPlan, ToneOption } from "@components/copilot/types";
 import { PurposeCard } from "@components/copilot/PurposeCard";
-import { PlanPreview } from "@components/copilot/PlanPreview";
+import { PlanReview } from "./PlanReview";
 
 interface Step1PurposePlanProps {
   purpose: string;
@@ -14,7 +14,9 @@ interface Step1PurposePlanProps {
   onSelectPreset: (presetId: string) => void;
   onGeneratePlan: () => void;
   isGenerating: boolean;
-  plan: Plan | null;
+  plan: EnhancedPlan | null;
+  onApplyPlan?: () => void;
+  isApplying?: boolean;
 }
 
 export const Step1PurposePlan: React.FC<Step1PurposePlanProps> = ({
@@ -29,7 +31,14 @@ export const Step1PurposePlan: React.FC<Step1PurposePlanProps> = ({
   onGeneratePlan,
   isGenerating,
   plan,
+  onApplyPlan,
+  isApplying = false,
 }) => {
+  const handleEditPlan = () => {
+    // For now, just scroll to top to edit
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in-up">
       {/* Welcome Banner */}
@@ -78,15 +87,11 @@ export const Step1PurposePlan: React.FC<Step1PurposePlanProps> = ({
 
         {plan && (
           <div className="animate-fade-in-up">
-            <PlanPreview
+            <PlanReview
               plan={plan}
-              expandedBlock={null}
-              onToggleBlock={() => {}}
-              onEditPillars={() => {}}
-              onEditCadence={() => {}}
-              onEditTargets={() => {}}
-              onEditEngagement={() => {}}
-              validationErrors={{}}
+              onUsePlan={onApplyPlan || (() => {})}
+              onEditPlan={handleEditPlan}
+              isApplying={isApplying}
             />
           </div>
         )}

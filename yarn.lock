@@ -4760,6 +4760,7 @@ __metadata:
     "@hookform/resolvers": ^2.9.7
     "@next-auth/prisma-adapter": ^1.0.4
     "@next/bundle-analyzer": ^13.1.6
+    "@quill/agent": "*"
     "@quillsocial/config": "*"
     "@quillsocial/dayjs": "*"
     "@quillsocial/features": "*"
@@ -4853,6 +4854,7 @@ __metadata:
     next-seo: ^6.0.0
     next-themes: ^0.2.0
     nodemailer: ^6.7.8
+    openai: ^4
     otplib: ^12.0.1
     postcss: ^8.4.18
     qrcode: ^1.5.3
@@ -17695,7 +17697,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"openai@npm:^4.56.0":
+"openai@npm:^4, openai@npm:^4.56.0":
   version: 4.104.0
   resolution: "openai@npm:4.104.0"
   dependencies:

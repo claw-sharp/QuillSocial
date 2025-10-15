@@ -43,6 +43,36 @@ export interface PlanTargets {
   leaders: Target[];
 }
 
+export interface DraftIdea {
+  title: string;
+  hook: string;
+  outline: string[];
+  cta: string;
+  hashtags?: string[];
+  replies: string[]; // 3 suggested first-replies
+}
+
+export interface Week1Slot {
+  date: string; // ISO date string
+  channel: CadenceChannel;
+  draft: DraftIdea;
+}
+
+export interface EngagementTargets {
+  meaningfulRepliesPerDay: number;
+  personas: string[]; // e.g., ["Peers", "Prospects", "Leaders"]
+}
+
+export interface PlanMetrics {
+  weeklyPostTarget: number;
+  dailyReplyTarget: number;
+}
+
+export interface BYOK {
+  xConnected: boolean;
+  engagementLists: Target[];
+}
+
 export interface Plan {
   purpose: string;
   tone: ToneOption;
@@ -51,6 +81,14 @@ export interface Plan {
   cadence: PlanCadenceSlot[];
   targets: PlanTargets;
   dailyReplies: number;
+}
+
+export interface EnhancedPlan extends Plan {
+  planId?: string;
+  week1Schedule?: Week1Slot[];
+  engagementTargets?: EngagementTargets;
+  metrics?: PlanMetrics;
+  byok?: BYOK;
 }
 
 export type PlanBlockKey = "pillars" | "cadence" | "targets" | "engagement";

@@ -8,8 +8,10 @@ import { trpc } from "@quillsocial/trpc/react";
 import { showToast } from "@quillsocial/ui";
 import PostHog from "@lib/analytics/posthog";
 import { COPILOT_PRESETS } from "@components/copilot/presets";
-import type { AudienceStage, Plan, ToneOption } from "@components/copilot/types";
+import type { AudienceStage, Plan, EnhancedPlan, ToneOption } from "@components/copilot/types";
 import { buildDefaultPlan, validatePlan } from "@components/copilot/utils";
+import { enhancePlan } from "@components/onboarding/planGenerator";
+import { transformAIPlanToEnhancedPlan } from "@components/onboarding/aiPlanTransformer";
 import {
   OnboardingLayout,
   Step1PurposePlan,
@@ -41,7 +43,7 @@ function OnboardingPage() {
   const [tone, setTone] = useState<ToneOption>("friendly");
   const [audienceStage, setAudienceStage] = useState<AudienceStage>("starting");
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
-  const [plan, setPlan] = useState<Plan | null>(null);
+  const [plan, setPlan] = useState<EnhancedPlan | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
 
@@ -83,41 +85,106 @@ function OnboardingPage() {
       return;
     }
     setIsGenerating(true);
-    PostHog.capture("onb_generate_plan_clicked", {
+    PostHog.capture("onboarding_generate_plan_clicked", {
       preset: selectedPresetId ?? undefined,
       tone,
       audienceStage,
     });
 
-    const selectedPreset = COPILOT_PRESETS.find((p) => p.id === selectedPresetId);
-    const generated = selectedPreset
-      ? (() => {
-          const p = selectedPreset.buildPlan();
-          p.purpose = purpose.trim() || p.purpose;
-          p.tone = tone; p.audienceStage = audienceStage; return p;
-        })()
-      : buildDefaultPlan(purpose, tone, audienceStage);
-
-    setPlan(generated);
-    setIsGenerating(false);
-    // Mirror to server (metadata only)
     try {
-      await fetch("/api/onboarding/generate-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          preset: selectedPresetId,
-          tone,
-          audienceStage,
-          pillars_count: generated.pillars.length,
-          slots_count: generated.cadence.length,
-        }),
+      // Use AI generation when user provides a custom goal (not just selecting a preset)
+      // Only fall back to preset logic when explicitly using a preset without custom text
+      const shouldUsePreset = selectedPresetId && purpose.trim().length < 20;
+
+      if (shouldUsePreset) {
+        // Preset-based plan generation (legacy path for quick starts)
+        const selectedPreset = COPILOT_PRESETS.find((p) => p.id === selectedPresetId);
+        const basePlan = selectedPreset
+          ? (() => {
+              const p = selectedPreset.buildPlan();
+              p.purpose = purpose.trim() || p.purpose;
+              p.tone = tone;
+              p.audienceStage = audienceStage;
+              return p;
+            })()
+          : buildDefaultPlan(purpose, tone, audienceStage);
+
+        // Enhance the plan with week-1 calendar, drafts, and engagement targets
+        const enhancedPlan = enhancePlan(basePlan, user?.id);
+
+        setPlan(enhancedPlan);
+        setIsGenerating(false);
+
+        // Telemetry
+        PostHog.capture("plan_generated_success", {
+          pillars_count: enhancedPlan.pillars.length,
+          channels: enhancedPlan.cadence
+            .flatMap((c) => c.channels)
+            .filter((v, i, a) => a.indexOf(v) === i),
+          week_slots: enhancedPlan.week1Schedule?.length || 0,
+          method: "preset",
+        });
+      } else {
+        // AI-powered plan generation (default path)
+        const selectedChannels = ["linkedin", "x"]; // Default channels, can be made configurable
+
+        const response = await fetch("/api/onboarding/generate-ai-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            goal: purpose.trim(),
+            persona: selectedPresetId || "indie creator",
+            tone,
+            channels: selectedChannels,
+            audienceStage,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate AI plan");
+        }
+
+        const data = await response.json();
+        const aiPlan = transformAIPlanToEnhancedPlan(data.plan, tone, audienceStage);
+
+        setPlan(aiPlan);
+        setIsGenerating(false);
+
+        // Telemetry
+        PostHog.capture("plan_generated_success", {
+          pillars_count: aiPlan.pillars.length,
+          channels: selectedChannels,
+          week_slots: aiPlan.week1Schedule?.length || 0,
+          method: "ai",
+        });
+      }
+
+      // Mirror to server (metadata only) - for both AI and preset paths
+      try {
+        await fetch("/api/onboarding/generate-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            preset: selectedPresetId,
+            tone,
+            audienceStage,
+            pillars_count: plan?.pillars.length || 0,
+            slots_count: plan?.cadence.length || 0,
+            week_slots: plan?.week1Schedule?.length || 0,
+          }),
+        });
+      } catch (_) {
+        // Silent fail for telemetry
+      }
+    } catch (error) {
+      console.error("Error generating plan:", error);
+      setIsGenerating(false);
+      PostHog.capture("plan_generated_error", {
+        code: "generation_failed",
+        error: error instanceof Error ? error.message : "unknown",
       });
-    } catch (_) {}
-    PostHog.capture("onb_plan_generated", {
-      pillars_count: generated.pillars.length,
-      slots_count: generated.cadence.length,
-    });
+      showToast("Failed to generate plan", "error");
+    }
   };
 
   const handleApplyPlan = async () => {
@@ -133,23 +200,44 @@ function OnboardingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          planId: plan.planId,
           pillars_count: plan.pillars.length,
           slots_count: plan.cadence.length,
           pillars: plan.pillars,
           purpose,
           tone,
           audienceStage,
+          week1Schedule: plan.week1Schedule,
+          engagementTargets: plan.engagementTargets,
+          metrics: plan.metrics,
+          byok: plan.byok,
         }),
       });
       const data = await resp.json();
+
+      // Telemetry for plan application
       PostHog.capture("onb_plan_applied", {
         pillars_count: plan.pillars.length,
         slots_count: plan.cadence.length,
-        placeholders_created: data?.placeholders_created ?? plan.cadence.length * 4,
+        drafts_created: plan.week1Schedule?.length || 0,
       });
+
+      // Telemetry for advancing to next step
+      PostHog.capture("onboarding_step_advanced", {
+        to: "first_post",
+      });
+
+      // Telemetry for each draft created
+      plan.week1Schedule?.forEach((slot) => {
+        PostHog.capture("draft_created", {
+          channel: slot.channel,
+        });
+      });
+
       showToast("Plan applied to workspace", "success");
       setStep(2);
-    } catch (_) {
+    } catch (error) {
+      console.error("Error applying plan:", error);
       showToast("Failed to apply plan", "error");
     } finally {
       setIsApplying(false);
@@ -303,6 +391,8 @@ function OnboardingPage() {
             onGeneratePlan={handleGeneratePlan}
             isGenerating={isGenerating}
             plan={plan}
+            onApplyPlan={handleApplyPlan}
+            isApplying={isApplying}
           />
         )}
 
