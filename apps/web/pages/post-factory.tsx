@@ -52,8 +52,8 @@ const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
     "authoritative"
   );
   const [activeTab, setActiveTab] = useState("linkedin");
-  const [cta, setCta] = useState("Join the pricing checklist");
-  const [utm, setUtm] = useState("?utm_source=li&utm_medium=post");
+  const [cta, setCta] = useState("");
+  const [utm, setUtm] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<
     ("linkedin" | "x" | "carousel" | "shorts" | "blog")[]
   >(["linkedin"]);
@@ -672,20 +672,30 @@ const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
               {/* CTA & UTM Inputs */}
               <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    type="text"
-                    className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
-                    value={cta}
-                    onChange={(e) => setCta(e.target.value)}
-                    placeholder="First-comment CTA"
-                  />
-                  <input
-                    type="text"
-                    className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
-                    value={utm}
-                    onChange={(e) => setUtm(e.target.value)}
-                    placeholder="UTM parameters"
-                  />
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      CTA
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                      value={cta}
+                      onChange={(e) => setCta(e.target.value)}
+                      placeholder="Join the pricing checklist"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      UTM
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                      value={utm}
+                      onChange={(e) => setUtm(e.target.value)}
+                      placeholder="?utm_source=li&utm_medium=post"
+                    />
+                  </div>
                 </div>
 
                 {/* Action Buttons */}
