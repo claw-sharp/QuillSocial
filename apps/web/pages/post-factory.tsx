@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import PageWrapper from "@components/PageWrapper";
 import Shell from "@quillsocial/features/shell/Shell";
@@ -13,6 +13,27 @@ import {
 import { useLocale } from "@quillsocial/lib/hooks/useLocale";
 import { trpc } from "@quillsocial/trpc/react";
 
+// Helper function to parse X/Twitter thread content into individual tweets
+function parseXThread(content: string): string[] {
+  // Try to split by numbered pattern (1/, 2/, 3/, etc.)
+  const numberedPattern = /\d+\/\s*/g;
+
+  // Check if content has numbered format
+  if (numberedPattern.test(content)) {
+    const items = content.split(numberedPattern).filter(item => item.trim());
+    return items;
+  }
+
+  // Fallback: split by double newlines or single newlines if content is short
+  const byDoubleNewline = content.split(/\n\n+/).filter(item => item.trim());
+  if (byDoubleNewline.length > 1) {
+    return byDoubleNewline;
+  }
+
+  // Last resort: split by single newlines
+  return content.split(/\n/).filter(item => item.trim());
+}
+
 interface Tab {
   id: string;
   name: string;
@@ -21,6 +42,7 @@ interface Tab {
 const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
   const { t } = useLocale();
   const router = useRouter();
+  const { ideaId } = router.query;
 
   const [outline, setOutline] = useState("Hook, 3 lessons on pricing ladder, example, CTA to pricing checklist");
   const [tone, setTone] = useState<"friendly" | "authoritative" | "contrarian">("authoritative");
@@ -28,6 +50,42 @@ const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
   const [cta, setCta] = useState("Join the pricing checklist");
   const [utm, setUtm] = useState("?utm_source=li&utm_medium=post");
   const [selectedPlatforms, setSelectedPlatforms] = useState<("linkedin" | "x" | "carousel" | "shorts" | "blog")[]>(["linkedin"]);
+  const [xThreadItems, setXThreadItems] = useState<string[]>([
+    "Most founders raise prices wrong. They wait too long, discount too fast, ladder incorrectly.",
+    "Lesson 1: Value first, price second. Show ROI before discussing cost.",
+    "Lesson 2: Granular pricing tiers. Give buyers choice and control.",
+    "Lesson 3: Communicate early. Surprises kill trust.",
+    "Example: A client shifted to annual pricing with 20% discount. Churn dropped 15%.",
+    "Pricing isn't static. Test, iterate, communicate.",
+    "Want the full checklist? Reply and I'll send it over.",
+  ]);
+
+  // Fetch idea from ideas-pillars if ideaId is provided
+  const { data: ideas } = trpc.viewer.ideasPillars.listIdeas.useQuery(
+    {},
+    { enabled: !!ideaId }
+  );
+
+  // Load outline from idea when data is available
+  useEffect(() => {
+    if (ideaId && ideas) {
+      const idea = ideas.find((i) => i.id === ideaId);
+      if (idea?.outline) {
+        setOutline(idea.outline.text);
+        const toneMap = {
+          FRIENDLY: "friendly" as const,
+          AUTHORITATIVE: "authoritative" as const,
+          CONTRARIAN: "contrarian" as const,
+        };
+        setTone(toneMap[idea.outline.tone] || "friendly");
+        showToast("Loaded outline from idea", "success");
+      } else if (idea) {
+        // Use the idea title as a starting point
+        setOutline(idea.title);
+        showToast("Loaded idea. You can expand it to an outline first.", "success");
+      }
+    }
+  }, [ideaId, ideas]);
 
   const [outputs, setOutputs] = useState({
     linkedin: `Most founders raise prices wrong. Here's the ladder we use:
@@ -59,7 +117,20 @@ CTA (10s): Grab the free pricing checklist.`,
   // tRPC mutations
   const generateAllMutation = trpc.viewer.postFactory.generateAll.useMutation({
     onSuccess: (data) => {
-      setOutputs(data.outputs);
+      setOutputs({
+        linkedin: data.outputs.linkedin || "",
+        x: data.outputs.x || "",
+        carousel: data.outputs.carousel || "",
+        shorts: data.outputs.shorts || "",
+        blog: data.outputs.blog || "",
+      });
+
+      // Parse X thread into individual items
+      if (data.outputs.x) {
+        const threadItems = parseXThread(data.outputs.x);
+        setXThreadItems(threadItems);
+      }
+
       showToast("Content generated successfully!", "success");
     },
     onError: (error) => {
@@ -84,6 +155,13 @@ CTA (10s): Grab the free pricing checklist.`,
         ...prev,
         [data.platform]: data.content,
       }));
+
+      // Parse X thread into individual items if regenerating X
+      if (data.platform === "x" && data.content) {
+        const threadItems = parseXThread(data.content);
+        setXThreadItems(threadItems);
+      }
+
       showToast(`${data.platform} content regenerated!`, "success");
     },
     onError: (error) => {
@@ -342,6 +420,51 @@ CTA (10s): Grab the free pricing checklist.`,
                         Slide {i + 1}
                       </div>
                     ))}
+                  </div>
+                ) : activeTab === "x" ? (
+                  <div className="space-y-3">
+                    {xThreadItems.map((item, index) => (
+                      <div key={index} className="flex gap-2">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold">
+                          {index + 1}
+                        </div>
+                        <TextArea
+                          className="flex-1 min-h-[80px] rounded-xl border-slate-200"
+                          value={item}
+                          onChange={(e) => {
+                            const newItems = [...xThreadItems];
+                            newItems[index] = e.target.value;
+                            setXThreadItems(newItems);
+                            // Update outputs as well
+                            setOutputs({
+                              ...outputs,
+                              x: newItems.map((t, i) => `${i + 1}/ ${t}`).join("\n\n")
+                            });
+                          }}
+                        />
+                        <button
+                          onClick={() => {
+                            const newItems = xThreadItems.filter((_, i) => i !== index);
+                            setXThreadItems(newItems);
+                            setOutputs({
+                              ...outputs,
+                              x: newItems.map((t, i) => `${i + 1}/ ${t}`).join("\n\n")
+                            });
+                          }}
+                          className="flex-shrink-0 text-red-500 hover:text-red-700 px-2"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setXThreadItems([...xThreadItems, ""]);
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      + Add tweet
+                    </button>
                   </div>
                 ) : (
                   <TextArea

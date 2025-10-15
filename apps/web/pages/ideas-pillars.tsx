@@ -24,9 +24,11 @@ import {
   Settings,
 } from "@quillsocial/ui/components/icon";
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 
 function IdeasPillarsPage() {
   const { t } = useLocale();
+  const router = useRouter();
   const utils = trpc.useContext();
 
   // State
@@ -110,9 +112,12 @@ function IdeasPillarsPage() {
   };
 
   const handlePromoteToPost = (idea: Idea) => {
-    console.log("Promote to Post:", idea.id);
-    showToast("Post promoted to Post Factory", "success");
-    // TODO: Navigate to post factory or integrate with post creation
+    // Navigate to post factory with the idea ID
+    router.push({
+      pathname: "/post-factory",
+      query: { ideaId: idea.id },
+    });
+    showToast("Navigating to Post Factory...", "success");
   };
 
   const handleSaveOutline = (outline: Outline) => {

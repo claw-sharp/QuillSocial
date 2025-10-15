@@ -49,9 +49,10 @@ Tone: ${tone}
 Provide a clear, numbered outline with sections and subsections.`;
 
     const callOpenAI = withUsageLogging(ctx, {
-      userId: -1, // System call, will be overridden by actual usage
-      requestType: "expand_outline",
-      model: "gpt-4o-mini",
+      userId: ctx.meta?.userId ?? -1,
+      teamId: ctx.meta?.teamId,
+      requestType: ctx.meta?.requestType ?? "expand_outline",
+      model: ctx.meta?.model ?? "gpt-4o-mini",
     });
 
     const response = await callOpenAI([
@@ -133,9 +134,10 @@ ${outline}${ctaSection}
 Generate a draft for each platform, clearly labeled with the platform name.`;
 
     const callOpenAI = withUsageLogging(ctx, {
-      userId: -1, // System call, will be overridden by actual usage
-      requestType: "generate_posts",
-      model: "gpt-4o-mini",
+      userId: ctx.meta?.userId ?? -1,
+      teamId: ctx.meta?.teamId,
+      requestType: ctx.meta?.requestType ?? "generate_posts",
+      model: ctx.meta?.model ?? "gpt-4o-mini",
     });
 
     const response = await callOpenAI([

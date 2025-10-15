@@ -33,6 +33,7 @@ export type AgentContext = {
   openaiApiKey?: string; // default to process.env.OPENAI_API_KEY if omitted
   byok?: BYOK;
   logger?: Logger; // Optional logger interface
+  meta?: UsageMeta; // Usage metadata for tracking
 };
 
 /**

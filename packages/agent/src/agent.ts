@@ -95,8 +95,11 @@ export function createQuillAgent(
       // Validate tool arguments with schema
       const validatedArgs = selectedTool.schema.parse(toolSelection.args);
 
+      // Create context with meta for tool execution
+      const toolCtx = { ...ctx, meta };
+
       // Execute the tool
-      const output = await selectedTool.run(validatedArgs, ctx);
+      const output = await selectedTool.run(validatedArgs, toolCtx);
 
       ctx.logger?.info(`Tool execution successful: ${selectedTool.name}`);
 
