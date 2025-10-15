@@ -12,6 +12,7 @@ import {
 } from "@quillsocial/ui/components/icon";
 import { useRouter } from "next/router";
 import React, { useState, useEffect } from "react";
+import { BlogMarkdownEditor } from "@components/blog-editor/BlogMarkdownEditor";
 
 // Helper function to parse X/Twitter thread content into individual tweets
 function parseXThread(content: string): string[] {
@@ -646,6 +647,14 @@ const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
                       + Add tweet
                     </button>
                   </div>
+                ) : activeTab === "blog" ? (
+                  <BlogMarkdownEditor
+                    value={outputs.blog}
+                    onChange={(value) =>
+                      setOutputs({ ...outputs, blog: value })
+                    }
+                    placeholder="Write your blog post in markdown..."
+                  />
                 ) : (
                   <TextArea
                     className="min-h-[300px] w-full rounded-xl border-slate-200"
