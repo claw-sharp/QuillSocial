@@ -240,11 +240,49 @@ export const postPdf = async (postId: number, credentialId: number, title?: stri
 
     console.log("[postPdf] Author URN", { authorUrn });
 
-    // Build a post payload with article content for the PDF link
-    // LinkedIn REST API supports 'article' content type for external links
+    // Download PDF from GCS to upload to LinkedIn
+    console.log("[postPdf] Downloading PDF from GCS");
+    const pdfResponse = await axios.get(signedUrl, { responseType: "arraybuffer" });
+    const pdfBuffer = Buffer.from(pdfResponse.data);
+
+    console.log("[postPdf] PDF downloaded, size:", pdfBuffer.length);
+
+    // Initialize document upload on LinkedIn
+    console.log("[postPdf] Initializing LinkedIn document upload");
+    const uploadData = await initializeDocumentUpload(
+      accessToken as string,
+      authorUrn,
+      title || linkedInPost.idea || "Document",
+      pdfBuffer.length
+    );
+
+    const uploadUrl = uploadData?.value?.uploadUrl;
+    const documentUrn = uploadData?.value?.document as string;
+
+    console.log("[postPdf] Upload initialized", { hasUploadUrl: !!uploadUrl, documentUrn });
+
+    if (!uploadUrl || !documentUrn) {
+      console.log("[postPdf] Failed to initialize document upload");
+      await prisma.post.update({ where: { id: postId }, data: { status: "ERROR" } });
+      return false;
+    }
+
+    // Upload the PDF binary to LinkedIn
+    console.log("[postPdf] Uploading PDF to LinkedIn");
+    const uploadSuccess = await uploadDocument(accessToken as string, pdfBuffer, uploadUrl);
+
+    if (!uploadSuccess) {
+      console.log("[postPdf] Failed to upload PDF");
+      await prisma.post.update({ where: { id: postId }, data: { status: "ERROR" } });
+      return false;
+    }
+
+    console.log("[postPdf] PDF uploaded successfully");
+
+    // Build post payload with the uploaded document
     const postData: any = {
       author: authorUrn,
-      commentary: `${title || linkedInPost.idea || ""}\n\n${linkedInPost.content || ""}`.trim(),
+      commentary: linkedInPost.content || "",
       visibility: "PUBLIC",
       distribution: {
         feedDistribution: "MAIN_FEED",
@@ -253,17 +291,16 @@ export const postPdf = async (postId: number, credentialId: number, title?: stri
       },
       lifecycleState: "PUBLISHED",
       content: {
-        article: {
-          source: signedUrl,
-          title: title || linkedInPost.idea || "Document",
-          description: linkedInPost.content || "",
+        media: {
+          title: title || linkedInPost.idea || "",
+          id: documentUrn,
         },
       },
     };
 
-    console.log("[postPdf] Posting to LinkedIn with article content:", {
+    console.log("[postPdf] Creating LinkedIn post with document:", {
       title: title || linkedInPost.idea,
-      pdfUrl: signedUrl
+      documentUrn
     });
 
     const response = await postLinkedInPost(accessToken as string, postData);
@@ -460,7 +497,12 @@ const uploadImage = async (token: string, imgSrc: string, uploadUrl: string) => 
 };
 
 /** ===== Document Upload (for PDF carousel) ===== */
-const initializeDocumentUpload = async (accessToken: string, owner: string, title: string) => {
+const initializeDocumentUpload = async (
+  accessToken: string,
+  owner: string,
+  title: string,
+  fileSizeBytes: number
+) => {
   const url = "https://api.linkedin.com/rest/documents?action=initializeUpload";
   const headers = {
     Authorization: `Bearer ${accessToken}`,
@@ -468,15 +510,31 @@ const initializeDocumentUpload = async (accessToken: string, owner: string, titl
     "X-Restli-Protocol-Version": "2.0.0",
     "Content-Type": "application/json",
   };
+
+  // Per LinkedIn Documents API documentation, only owner is required
+  // https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api
   const data = {
     initializeUploadRequest: {
       owner,
-      fileSizeBytes: 104857600, // 100MB max
-      uploadType: "DOCUMENT",
     },
   };
-  const response = await axios.post(url, data, { headers });
-  return response.data;
+
+  console.log("[initializeDocumentUpload] Request data:", JSON.stringify(data, null, 2));
+
+  try {
+    const response = await axios.post(url, data, { headers });
+    console.log("[initializeDocumentUpload] Success:", response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error("[initializeDocumentUpload] Error:", {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      errorDetails: JSON.stringify(error.response?.data?.errorDetails, null, 2),
+      requestData: data
+    });
+    throw error;
+  }
 };
 
 const uploadDocument = async (token: string, pdfBuffer: Buffer, uploadUrl: string) => {
