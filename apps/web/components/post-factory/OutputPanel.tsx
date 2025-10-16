@@ -65,8 +65,10 @@ const OutputPanel: React.FC<Props> = ({
 }) => {
   const [isLinkedinScheduleOpen, setIsLinkedinScheduleOpen] = useState(false);
   const [isXScheduleOpen, setIsXScheduleOpen] = useState(false);
+  const [isLinkedinPdfScheduleOpen, setIsLinkedinPdfScheduleOpen] = useState(false);
   const [linkedinScheduleDateTime, setLinkedinScheduleDateTime] = useState("");
   const [xScheduleDateTime, setXScheduleDateTime] = useState("");
+  const [linkedinPdfScheduleDateTime, setLinkedinPdfScheduleDateTime] = useState("");
 
   // State for generated carousel images/PDF
   const [generatedCarouselImages, setGeneratedCarouselImages] = useState<Array<{
@@ -85,6 +87,8 @@ const OutputPanel: React.FC<Props> = ({
   // State for signed URLs
   const [imageSignedUrls, setImageSignedUrls] = useState<Record<number, string>>({});
   const [pdfSignedUrl, setPdfSignedUrl] = useState<string>("");
+  // State for combined generation
+  const [isGeneratingCarousell, setIsGeneratingCarousell] = useState(false);
 
   // Load saved cloudFiles when they're available
   React.useEffect(() => {
@@ -240,6 +244,33 @@ const OutputPanel: React.FC<Props> = ({
     });
   };
 
+  // Generate both images and pdf when requested
+  const handleGenerateCarousellBoth = async () => {
+    if (carouselSlides.length === 0) {
+      showToast("Please add at least one slide to generate the carousel", "error");
+      return;
+    }
+
+    setIsGeneratingCarousell(true);
+    const slides = parseCarouselSlides();
+    try {
+      // generate images first
+      if (generateCarouselMutation.mutateAsync) {
+        await generateCarouselMutation.mutateAsync({ slides, format: "images" });
+        // then generate pdf
+        await generateCarouselMutation.mutateAsync({ slides, format: "pdf" });
+      } else {
+        // fallback in case mutateAsync is not available
+        generateCarouselMutation.mutate({ slides, format: "images" });
+        generateCarouselMutation.mutate({ slides, format: "pdf" });
+      }
+    } catch (err: any) {
+      showToast(`Failed to generate carousel: ${err?.message || String(err)}`, "error");
+    } finally {
+      setIsGeneratingCarousell(false);
+    }
+  };
+
   // Get social accounts - single query for all accounts
   const { data: socialAccounts, isLoading: isSocialAccountsLoading } = trpc.viewer.socials.getSocialNetWorking.useQuery();
 
@@ -315,8 +346,40 @@ const OutputPanel: React.FC<Props> = ({
       return;
     }
 
-    showToast("Publishing to X...", "success");
-    // TODO: Implement actual publishing logic
+    if (!currentPostId) {
+      showToast("Please save the post first before publishing", "error");
+      return;
+    }
+
+    try {
+      showToast("Publishing to X...", "success");
+
+      // If the user has thread items, call the postThread API which posts multiple tweets as a thread
+      if (xThreadItems && xThreadItems.length > 0) {
+        const resp = await fetch(`/api/integrations/xconsumerkeyssocial/postThread?id=${currentPostId}&credentialId=${xAccount.id}`, {
+          method: "POST",
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+          showToast("Thread published to X", "success");
+        } else {
+          showToast(data.error || "Failed to publish thread to X", "error");
+        }
+      } else {
+        // Fallback to single post
+        const resp = await fetch(`/api/integrations/xconsumerkeyssocial/post?id=${currentPostId}&credentialId=${xAccount.id}`, {
+          method: "POST",
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+          showToast("Posted to X", "success");
+        } else {
+          showToast(data.error || "Failed to post to X", "error");
+        }
+      }
+    } catch (err) {
+      showToast("Failed to publish to X", "error");
+    }
   };
 
   const handleXSchedule = () => {
@@ -342,6 +405,61 @@ const OutputPanel: React.FC<Props> = ({
     showToast("Scheduling X post...", "success");
     // TODO: Implement actual scheduling logic
     setIsXScheduleOpen(false);
+  };
+
+  const handleLinkedinPdfSchedule = () => {
+    if (!linkedinAccount) {
+      showToast("Please connect a LinkedIn account first", "error");
+      return;
+    }
+
+    if (!currentPostId) {
+      showToast("Please save the post first before scheduling", "error");
+      return;
+    }
+
+    if (!generatedCarouselPdf) {
+      showToast("No PDF generated to schedule", "error");
+      return;
+    }
+
+    setIsLinkedinPdfScheduleOpen(true);
+  };
+
+  const handleLinkedinPdfScheduleUpdate = async () => {
+    if (!linkedinPdfScheduleDateTime) {
+      showToast("Please select a date and time", "error");
+      return;
+    }
+
+    if (!currentPostId) {
+      showToast("Post ID is missing", "error");
+      return;
+    }
+
+    try {
+      showToast("Scheduling LinkedIn PDF...", "success");
+
+      const response = await fetch("/api/posts/schedulePost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: currentPostId,
+          scheduleDay: linkedinPdfScheduleDateTime,
+        }),
+      });
+
+      if (response.ok) {
+        showToast("PDF scheduled successfully!", "success");
+        setIsLinkedinPdfScheduleOpen(false);
+      } else {
+        showToast("Failed to schedule PDF", "error");
+      }
+    } catch (err) {
+      console.error("Schedule error:", err);
+      showToast("Failed to schedule PDF", "error");
+    }
   };
 
   const handleInstallLinkedIn = async () => {
@@ -440,22 +558,13 @@ const OutputPanel: React.FC<Props> = ({
                 <h3 className="text-sm font-semibold text-slate-700 mb-3">Generate Carousel</h3>
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => handleGenerateCarousel("images")}
-                    loading={generateCarouselMutation.isLoading && generateCarouselMutation.variables?.format === "images"}
-                    disabled={carouselSlides.length === 0 || generateCarouselMutation.isLoading}
-                    className="flex-1"
+                    onClick={handleGenerateCarousellBoth}
+                    loading={isGeneratingCarousell || generateCarouselMutation.isLoading}
+                    disabled={carouselSlides.length === 0 || isGeneratingCarousell || generateCarouselMutation.isLoading}
+                    className="px-4"
                     StartIcon={FileImage}
                   >
-                    Generate Images
-                  </Button>
-                  <Button
-                    onClick={() => handleGenerateCarousel("pdf")}
-                    loading={generateCarouselMutation.isLoading && generateCarouselMutation.variables?.format === "pdf"}
-                    disabled={carouselSlides.length === 0 || generateCarouselMutation.isLoading}
-                    className="flex-1"
-                    StartIcon={Download}
-                  >
-                    Generate PDF
+                    Generate Carousell
                   </Button>
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
@@ -698,7 +807,7 @@ const OutputPanel: React.FC<Props> = ({
                     <Button
                       className="rounded-xl px-4 py-2"
                       color="secondary"
-                      onClick={() => showToast("LinkedIn PDF scheduling coming soon!", "success")}
+                      onClick={handleLinkedinPdfSchedule}
                       StartIcon={Calendar}
                       disabled={!generatedCarouselPdf}
                       size="sm"
@@ -843,6 +952,15 @@ const OutputPanel: React.FC<Props> = ({
         onClose={() => setIsLinkedinScheduleOpen(false)}
         onDateTimeChange={(value: string) => setLinkedinScheduleDateTime(value)}
         onUpdate={handleLinkedinScheduleUpdate}
+        appId="linkedin-social"
+      />
+
+      {/* LinkedIn PDF Schedule Dialog */}
+      <ScheduleDialog
+        open={isLinkedinPdfScheduleOpen}
+        onClose={() => setIsLinkedinPdfScheduleOpen(false)}
+        onDateTimeChange={(value: string) => setLinkedinPdfScheduleDateTime(value)}
+        onUpdate={handleLinkedinPdfScheduleUpdate}
         appId="linkedin-social"
       />
 

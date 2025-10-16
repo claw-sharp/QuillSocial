@@ -113,8 +113,27 @@ async function linkedinApiRequest({
 /** ===== Main post flow ===== */
 export const post = async (postId: number) => {
   try {
-    const linkedInPost = await prisma.post.findUnique({ where: { id: postId } });
+    const linkedInPost = await prisma.post.findUnique({
+      where: { id: postId },
+      include: {
+        cloudFiles: {
+          include: {
+            cloudFile: true
+          }
+        }
+      }
+    });
     if (!linkedInPost?.credentialId) return false;
+
+    // Check if this is a PDF document post
+    const pdfFile = linkedInPost.cloudFiles
+      ?.map((pcf) => pcf.cloudFile)
+      .find((cf) => cf?.fileExt === "pdf");
+
+    if (pdfFile) {
+      console.log("[LinkedinManager.post] Detected PDF file, routing to postPdf");
+      return await postPdf(postId, linkedInPost.credentialId, linkedInPost.title || undefined);
+    }
 
     const accessToken = await getClient(linkedInPost.credentialId);
     if (!accessToken) {
