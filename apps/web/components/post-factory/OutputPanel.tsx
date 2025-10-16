@@ -1,7 +1,10 @@
-import React from "react";
-import { TextArea, Button } from "@quillsocial/ui";
-import { Copy, Wand } from "@quillsocial/ui/components/icon";
+import React, { useState } from "react";
+import { TextArea, Button, showToast } from "@quillsocial/ui";
+import { Copy, Wand, Calendar, Send } from "@quillsocial/ui/components/icon";
 import { BlogMarkdownEditor } from "@components/blog-editor/BlogMarkdownEditor";
+import { trpc } from "@quillsocial/trpc/react";
+import { InstallAppButtonWithoutPlanCheck } from "@quillsocial/app-store/components";
+import SocialAvatar from "@quillsocial/features/shell/SocialAvatar";
 
 type Outputs = {
   linkedin: string;
@@ -46,6 +49,68 @@ const OutputPanel: React.FC<Props> = ({
   handleCopy,
   handleRegenerate,
 }) => {
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+
+  // Query LinkedIn integration status
+  const { data: linkedinIntegration, isLoading: linkedinLoading } = trpc.viewer.integrations.useQuery({
+    variant: "social",
+    onlyInstalled: false,
+    slug: "linkedin-social",
+  });
+
+  // Get social accounts to find LinkedIn account
+  const { data: socialAccounts } = trpc.viewer.socials.getSocialNetWorking.useQuery();
+
+  const linkedinAccount = socialAccounts?.find(
+    (account) => account.appId === "linkedin-social"
+  );
+
+  const hasLinkedinAccount = linkedinIntegration?.items?.some(
+    (item) => item.credentialIds.length > 0
+  );
+
+  const handlePublish = async () => {
+    if (!linkedinAccount) {
+      showToast("Please connect a LinkedIn account first", "error");
+      return;
+    }
+
+    if (!outputs.linkedin?.trim()) {
+      showToast("Please generate LinkedIn content first", "error");
+      return;
+    }
+
+    showToast("Publishing to LinkedIn...", "success");
+    // TODO: Implement actual publishing logic
+  };
+
+  const handleSchedule = () => {
+    if (!linkedinAccount) {
+      showToast("Please connect a LinkedIn account first", "error");
+      return;
+    }
+
+    if (!outputs.linkedin?.trim()) {
+      showToast("Please generate LinkedIn content first", "error");
+      return;
+    }
+
+    setIsScheduleOpen(true);
+    // TODO: Open schedule dialog
+  };
+
+  const handleInstallLinkedIn = async () => {
+    try {
+      const response = await fetch("/api/integrations/linkedinsocial/add");
+      const data = await response.json();
+      if (data.url) {
+        window.open(data.url, "_self");
+      }
+    } catch (error) {
+      showToast("Failed to initiate LinkedIn installation", "error");
+    }
+  };
+
   return (
     <div className="lg:col-span-2 p-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="mb-4">
@@ -138,6 +203,64 @@ const OutputPanel: React.FC<Props> = ({
         </div>
 
         <div className="border-t border-slate-200 my-4" />
+
+        {/* LinkedIn-specific actions */}
+        {activeTab === "linkedin" && (
+          <div className="mb-4">
+            {!linkedinLoading && (
+              <>
+                {hasLinkedinAccount && linkedinAccount ? (
+                  <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
+                    {/* LinkedIn Account Info */}
+                    <SocialAvatar
+                      avatarUrl={linkedinAccount.avatarUrl || ""}
+                      name={linkedinAccount.name}
+                      appId={linkedinAccount.appId}
+                      size="md"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 truncate">{linkedinAccount.name}</p>
+                      <p className="text-xs text-slate-600 truncate">{linkedinAccount.emailOrUserName}</p>
+                    </div>
+
+                    {/* Publish & Schedule Buttons */}
+                    <div className="flex gap-2 flex-shrink-0">
+                      <Button
+                        className="rounded-xl px-4 py-2"
+                        onClick={handlePublish}
+                        StartIcon={Send}
+                        disabled={!outputs.linkedin?.trim()}
+                        size="sm"
+                      >
+                        Publish
+                      </Button>
+                      <Button
+                        className="rounded-xl px-4 py-2"
+                        color="secondary"
+                        onClick={handleSchedule}
+                        StartIcon={Calendar}
+                        disabled={!outputs.linkedin?.trim()}
+                        size="sm"
+                      >
+                        Schedule
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl border border-slate-200 text-center">
+                    <p className="text-sm text-slate-600 mb-3">Connect your LinkedIn account to publish posts</p>
+                    <Button
+                      className="rounded-xl px-6"
+                      onClick={handleInstallLinkedIn}
+                    >
+                      Install LinkedIn
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-3">
           <Button className="rounded-xl" onClick={handleCopy} StartIcon={Copy}>Copy</Button>

@@ -620,6 +620,15 @@ const MORE_SEPARATOR_NAME = "Admin";
 
 const navigation: NavigationItemType[] = [
   {
+    name: "Ideas & Pillars",
+    href: "/ideas-pillars",
+    icon: Lightbulb,
+    isCurrent: ({ router }) => {
+      const path = router.asPath.split("?")[0];
+      return path.startsWith("/ideas-pillars");
+    },
+  },
+  {
     name: "Write",
     href: "/write/0",
     icon: PenTool,
@@ -659,15 +668,7 @@ const navigation: NavigationItemType[] = [
       return path.startsWith("/my-content");
     },
   },
-  {
-    name: "Ideas & Pillars",
-    href: "/ideas-pillars",
-    icon: Lightbulb,
-    isCurrent: ({ router }) => {
-      const path = router.asPath.split("?")[0];
-      return path.startsWith("/ideas-pillars");
-    },
-  },
+
   {
     name: "Calendar",
     href: "/calendar",
