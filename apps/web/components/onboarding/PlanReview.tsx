@@ -145,12 +145,12 @@ export const PlanReview: React.FC<PlanReviewProps> = ({
                 {plan.metrics?.dailyReplyTarget || 5}
               </span>
             </div>
-            <div className="flex items-center justify-between text-sm">
+            {/* <div className="flex items-center justify-between text-sm">
               <span className="text-slate-600">Engage with</span>
               <span className="font-semibold text-slate-900">
                 {plan.engagementTargets?.personas.join(", ")}
               </span>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>

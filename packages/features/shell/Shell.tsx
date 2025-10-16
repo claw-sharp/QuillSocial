@@ -69,6 +69,7 @@ import {
   Linkedin,
   BookOpen,
   MessageCircle,
+  Bot,
 } from "@quillsocial/ui/components/icon";
 import type { User as UserAuth } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
@@ -716,6 +717,15 @@ const navigation: NavigationItemType[] = [
     isCurrent: ({ router }) => {
       const path = router.asPath.split("?")[0];
       return path.startsWith("/settings");
+    },
+  },
+  {
+    name: "Copilot",
+    href: "/copilot",
+    icon: Bot,
+    isCurrent: ({ router }) => {
+      const path = router.asPath.split("?")[0];
+      return path.startsWith("/copilot");
     },
   },
   {

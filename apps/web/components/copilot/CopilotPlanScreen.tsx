@@ -21,6 +21,7 @@ import {
   COPILOT_DRAFT_STORAGE_KEY,
   buildDefaultPlan,
 } from "./utils";
+import { transformAIPlanToEnhancedPlan } from "@components/onboarding/aiPlanTransformer";
 import { PurposeCard } from "./PurposeCard";
 import { PlanPreview } from "./PlanPreview";
 import { ApplyBar } from "./ApplyBar";
@@ -143,29 +144,74 @@ const CopilotPlanScreen: React.FC = () => {
     await fastSleep(450);
 
     const selectedPreset = COPILOT_PRESETS.find((preset) => preset.id === selectedPresetId);
-    let generatedPlan: Plan;
-    if (selectedPreset) {
-      generatedPlan = selectedPreset.buildPlan();
-      generatedPlan.purpose = purpose.trim() || generatedPlan.purpose;
-      generatedPlan.tone = tone;
-      generatedPlan.audienceStage = audienceStage;
-    } else {
-      generatedPlan = buildDefaultPlan(purpose, tone, audienceStage);
-    }
 
-    setPlan(generatedPlan);
-    setExpandedBlock("pillars");
-    setValidationErrors({});
-    setHasUnsavedChanges(true);
-    setIsGenerating(false);
-    console.log("copilot_plan_generated", {
-      pillars: generatedPlan.pillars.length,
-      slots: generatedPlan.cadence.length,
-      targets:
-        generatedPlan.targets.peers.length +
-        generatedPlan.targets.prospects.length +
-        generatedPlan.targets.leaders.length,
-    });
+    try {
+      if (selectedPreset) {
+        // Preset path (existing behavior)
+        const generatedPlan = selectedPreset.buildPlan();
+        generatedPlan.purpose = purpose.trim() || generatedPlan.purpose;
+        generatedPlan.tone = tone;
+        generatedPlan.audienceStage = audienceStage;
+        setPlan(generatedPlan);
+        setExpandedBlock("pillars");
+        setValidationErrors({});
+        setHasUnsavedChanges(true);
+        console.log("copilot_plan_generated", {
+          method: "preset",
+          pillars: generatedPlan.pillars.length,
+          slots: generatedPlan.cadence.length,
+        });
+      } else {
+        // AI-powered generation path - call onboarding AI endpoint and transform result
+        const selectedChannels = ["linkedin", "x"]; // default channels
+        const response = await fetch("/api/onboarding/generate-ai-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            goal: purpose.trim(),
+            persona: selectedPresetId || "indie creator",
+            tone,
+            channels: selectedChannels,
+            audienceStage,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate AI plan");
+        }
+
+        const data = await response.json();
+        // transform to EnhancedPlan
+        const enhanced = transformAIPlanToEnhancedPlan(data.plan, tone, audienceStage);
+
+        // Map EnhancedPlan to local Plan shape (Plan is subset of EnhancedPlan)
+        const mappedPlan: Plan = {
+          purpose: enhanced.purpose,
+          tone: enhanced.tone,
+          audienceStage: enhanced.audienceStage,
+          pillars: enhanced.pillars,
+          cadence: enhanced.cadence,
+          targets: enhanced.targets,
+          dailyReplies: enhanced.dailyReplies || 5,
+        };
+
+        setPlan(mappedPlan);
+        setExpandedBlock("pillars");
+        setValidationErrors({});
+        setHasUnsavedChanges(true);
+        console.log("copilot_plan_generated", {
+          method: "ai",
+          pillars: enhanced.pillars.length,
+          slots: enhanced.cadence.length,
+          week_slots: enhanced.week1Schedule?.length || 0,
+        });
+      }
+    } catch (error) {
+      console.error("Error generating plan (copilot):", error);
+      showToast("Failed to generate plan", "error");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleUsePreset = () => {

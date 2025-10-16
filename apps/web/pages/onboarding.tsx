@@ -16,7 +16,6 @@ import {
   OnboardingLayout,
   Step1PurposePlan,
   Step2FirstPost,
-  Step3FirstReplies,
 } from "@components/onboarding";
 import Shell from "@quillsocial/features/shell/Shell";
 import PageWrapper from "@components/PageWrapper";
@@ -28,7 +27,7 @@ function getTomorrowAtNine(): Date {
   return d;
 }
 
-type StepKey = 1 | 2 | 3;
+type StepKey = 1 | 2;
 
 function OnboardingPage() {
   const router = useRouter();
@@ -53,11 +52,11 @@ function OnboardingPage() {
   const [draftId, setDraftId] = useState<string | null>(null);
   const undoTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Step 3 state (Replies)
-  const [dailyGoal, setDailyGoal] = useState<number>(10);
-  const [repliesCount, setRepliesCount] = useState(0);
-  const [lastReplyCard, setLastReplyCard] = useState<string | null>(null);
-  const replyUndoTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Step 3 (Replies) removed/commented out
+  // const [dailyGoal, setDailyGoal] = useState<number>(10);
+  // const [repliesCount, setRepliesCount] = useState(0);
+  // const [lastReplyCard, setLastReplyCard] = useState<string | null>(null);
+  // const replyUndoTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const completeOnboarding = trpc.viewer.updateProfile.useMutation({
     onSuccess: async () => {
@@ -262,9 +261,9 @@ function OnboardingPage() {
       setDraftId(data?.draftId || null);
       PostHog.capture("onb_post_scheduled", { channel: activeChannel, whenISO: when.toISOString(), postId: data?.postId });
       showToast(`Scheduled on ${activeChannel} for ${when.toLocaleString()}`, "success");
-      // Auto-advance after brief delay
-      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-      undoTimerRef.current = setTimeout(() => setStep(3), 1200);
+  // Auto-advance after brief delay to next step (no replies step)
+  if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+  undoTimerRef.current = setTimeout(() => setStep(2), 1200);
     } catch (_) {
       showToast("Failed to schedule", "error");
     }
@@ -277,52 +276,13 @@ function OnboardingPage() {
     showToast("Undid schedule", "success");
   };
 
-  // Mock reply queue
-  const replyCards = useMemo(
-    () => [
-      { id: "rx1", platform: "x", author: "@levelsio", snippet: "Launching a new micro SaaS weekly." },
-      { id: "rx2", platform: "linkedin", author: "@revopsleaders", snippet: "Playbooks that actually convert." },
-      { id: "rx3", platform: "x", author: "@productledge", snippet: "Make onboarding your growth loop." },
-    ],
-    []
-  );
-
-  const sendReply = async (cardId: string, platform: string) => {
-    setRepliesCount((c) => c + 1);
-    setLastReplyCard(cardId);
-    try {
-      const replyCard = replyCards.find(card => card.id === cardId);
-      await fetch("/api/onboarding/reply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          platform,
-          cardId,
-          replyContent: `Great insight! Thanks for sharing.`
-        }),
-      });
-      PostHog.capture("onb_reply_sent", { platform, cardId, author: replyCard?.author });
-      if (repliesCount + 1 >= 3) {
-        showToast("Nice! 3 replies – you're done.", "success");
-      }
-      if (replyUndoTimerRef.current) clearTimeout(replyUndoTimerRef.current);
-      replyUndoTimerRef.current = setTimeout(() => setLastReplyCard(null), 10000);
-    } catch (_) {}
-  };
-
-    const undoLastReply = () => {
-    if (!lastReplyCard) return;
-    setRepliesCount((c) => Math.max(0, c - 1));
-    setLastReplyCard(null);
-    showToast("Reply undone", "success");
-  };
+  // Reply/mock reply queue and handlers removed
 
   const statusLabel = useMemo(() => {
     const planReady = plan ? "Plan ready" : "No plan";
     const postStatus = scheduledAt ? "1 post scheduled" : "0 posts scheduled";
-    const repliesStatus = `${repliesCount}/3 replies`;
-    return `${planReady} • ${postStatus} • ${repliesStatus}`;
-  }, [plan, scheduledAt, repliesCount]);
+    return `${planReady} • ${postStatus}`;
+  }, [plan, scheduledAt]);
 
   const getPrimaryAction = () => {
     if (step === 1) {
@@ -347,9 +307,9 @@ function OnboardingPage() {
       };
     }
     return {
-      label: repliesCount >= 3 ? "Finish Onboarding" : "Send 3 Replies to Finish",
+      label: "Finish Onboarding",
       onClick: () => completeOnboarding.mutate({ completedOnboarding: true }),
-      disabled: repliesCount < 3 || completeOnboarding.isLoading,
+      disabled: completeOnboarding.isLoading,
       loading: completeOnboarding.isLoading,
     };
   };
@@ -359,12 +319,6 @@ function OnboardingPage() {
       return {
         label: "Undo",
         onClick: undoSchedule,
-      };
-    }
-    if (step === 3 && lastReplyCard) {
-      return {
-        label: "Undo",
-        onClick: undoLastReply,
       };
     }
     return undefined;
@@ -405,15 +359,7 @@ function OnboardingPage() {
           />
         )}
 
-        {step === 3 && (
-          <Step3FirstReplies
-            dailyGoal={dailyGoal}
-            onDailyGoalChange={setDailyGoal}
-            repliesCount={repliesCount}
-            replyCards={replyCards}
-            onSendReply={sendReply}
-          />
-        )}
+        {/* Step 3 (Replies) removed */}
       </OnboardingLayout>
     </Shell>
   );
