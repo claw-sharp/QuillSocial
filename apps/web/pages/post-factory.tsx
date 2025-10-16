@@ -17,6 +17,43 @@ import {
 import { useRouter } from "next/router";
 import React, { useState, useEffect, useRef } from "react";
 
+// Helper: split a single carousel text into individual slide strings.
+// Supports inputs that are either already an array, or a single string that
+// contains slide markers like "Slide 1:" or double newlines between slides.
+function parseCarouselStringToSlides(input?: string | string[] | null): string[] {
+  if (!input) return [];
+  if (Array.isArray(input)) return input;
+
+  const text = input as string;
+
+  // If the text contains explicit "Slide N:" markers, split on those markers.
+  // Keep the markers on each slide so existing parsers that strip the heading still work.
+  const slideMarkerRegex = /(?:^|\n)\s*(Slide\s+\d+:)/i;
+
+  // Strategy:
+  // 1. If we can find multiple "Slide <num>:" occurrences, split on positions before each marker.
+  // 2. Otherwise, split on two or more newlines which commonly separate slides.
+
+  const markers = Array.from(text.matchAll(/Slide\s+\d+:/gi));
+  if (markers.length > 1) {
+    // Split by regex that captures the marker so we can recombine marker + content
+    const parts: string[] = [];
+    const splitRegex = /(Slide\s+\d+:)/gi;
+    const tokens = text.split(splitRegex).map((t) => t.trim()).filter(Boolean);
+    // tokens will be like ["Slide 1:", "Heading...", "Slide 2:", "Heading..."]
+    for (let i = 0; i < tokens.length; i += 2) {
+      const marker = tokens[i];
+      const content = tokens[i + 1] || "";
+      parts.push(`${marker} ${content}`.trim());
+    }
+    return parts.map((p) => p.trim()).filter(Boolean);
+  }
+
+  // Fallback: split on two or more newlines
+  const chunks = text.split(/\n{2,}/).map((c) => c.trim()).filter(Boolean);
+  return chunks;
+}
+
 // Helper function to parse X/Twitter thread content into individual tweets
 // parseXThread is now in utils and imported above
 
@@ -117,11 +154,9 @@ const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
             setXThreadItems(threadItems);
           }
 
-          // Parse carousel slides if they exist
+          // Parse carousel slides if they exist (split single-string into slides)
           if (existingPost.outputs.carousel) {
-            const slides = Array.isArray(existingPost.outputs.carousel)
-              ? existingPost.outputs.carousel
-              : [existingPost.outputs.carousel as string];
+            const slides = parseCarouselStringToSlides(existingPost.outputs.carousel as any);
             setCarouselSlides(slides);
           }
         }
@@ -199,6 +234,45 @@ const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
       },
     });
 
+  // Save a single platform's output (user-edited) without overwriting other platforms
+  const handleSavePlatform = (platform: "linkedin" | "x" | "carousel" | "shorts" | "blog") => {
+    // Start with the current UI outputs so we preserve any other platforms
+    const outputsToSave: Record<string, string | string[] | undefined> = {
+      ...outputs,
+    } as any;
+
+    // For X and carousel we may prefer the array forms if the UI has them
+    if (platform === "x") {
+      if (xThreadItems && xThreadItems.length > 0) {
+        outputsToSave.x = xThreadItems;
+      } else if (outputs.x) {
+        outputsToSave.x = outputs.x;
+      } else {
+        outputsToSave.x = undefined;
+      }
+    } else if (platform === "carousel") {
+      if (carouselSlides && carouselSlides.length > 0) {
+        outputsToSave.carousel = carouselSlides;
+      } else if (outputs.carousel) {
+        outputsToSave.carousel = outputs.carousel;
+      } else {
+        outputsToSave.carousel = undefined;
+      }
+    } else {
+      outputsToSave[platform] = outputs[platform as keyof typeof outputs];
+    }
+
+    saveGeneratedPostsMutation.mutate({
+      outline,
+      tone,
+      outputs: outputsToSave as any,
+      cta,
+      utm,
+      ideaId: typeof ideaId === "string" ? ideaId : undefined,
+      postId: currentPostId,
+    });
+  };
+
   const generateAllMutation = trpc.viewer.postFactory.generateAll.useMutation({
     onSuccess: (data) => {
       // Handle new format where x and carousel are arrays
@@ -228,9 +302,7 @@ const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
 
       // Parse carousel into individual slides
       if (data.outputs.carousel) {
-        const slides = Array.isArray(data.outputs.carousel)
-          ? data.outputs.carousel
-          : [data.outputs.carousel as string];
+        const slides = parseCarouselStringToSlides(data.outputs.carousel as any);
         setCarouselSlides(slides);
       }
 
@@ -289,9 +361,7 @@ const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
 
       // Parse carousel into individual slides if regenerating carousel
       if (data.platform === "carousel" && data.content) {
-        const slides = Array.isArray(data.content)
-          ? data.content
-          : [data.content as string];
+        const slides = parseCarouselStringToSlides(data.content as any);
         setCarouselSlides(slides);
       }
 
@@ -504,6 +574,7 @@ const PostFactoryPage: React.FC & { PageWrapper?: any } = () => {
                 postId: currentPostId,
               });
             }}
+            onSavePlatform={handleSavePlatform}
           />
         </div>
       </Shell>

@@ -8,12 +8,33 @@ import SocialAvatar from "@quillsocial/features/shell/SocialAvatar";
 import { ScheduleDialog } from "@components/write/ScheduleDialog";
 import type { PluginType } from "@components/write/ScheduleDialog";
 
+// Minimal markdown-to-HTML renderer (keeps it simple for copy/paste scenarios)
+function renderMarkdownToHTML(markdown: string): string {
+  if (!markdown) return "";
+  // very small conversion: headings, bold, italic, links, images, lists, code
+  let html = markdown;
+  html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/^\* (.*)$/gim, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  return html;
+}
+
 type Outputs = {
   linkedin: string;
   x: string;
   carousel: string;
   shorts: string;
-  // shorts: string;
   blog: string;
 };
 
@@ -37,13 +58,14 @@ type Props = {
     fileName: string;
   }>;
   onSaveCloudFiles: (cloudFileIds: number[]) => void;
+  onSavePlatform?: (platform: "linkedin" | "x" | "carousel" | "shorts" | "blog") => void;
 };
 
 const tabs = [
   { id: "linkedin", name: "LinkedIn" },
   { id: "x", name: "X Thread" },
   { id: "carousel", name: "Carousel" },
-  // { id: "shorts", name: "Shorts" },
+  { id: "shorts", name: "Shorts" },
   { id: "blog", name: "Blog" },
 ];
 
@@ -62,6 +84,7 @@ const OutputPanel: React.FC<Props> = ({
   currentPostId,
   savedCloudFiles,
   onSaveCloudFiles,
+  onSavePlatform,
 }) => {
   const [isLinkedinScheduleOpen, setIsLinkedinScheduleOpen] = useState(false);
   const [isXScheduleOpen, setIsXScheduleOpen] = useState(false);
@@ -616,6 +639,16 @@ const OutputPanel: React.FC<Props> = ({
                   >
                     Generate Carousell
                   </Button>
+                  {onSavePlatform && (
+                    <Button
+                      className="rounded-xl px-4 py-2"
+                      color="primary"
+                      onClick={() => onSavePlatform("x")}
+                      size="sm"
+                    >
+                      Save
+                    </Button>
+                  )}
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
                   Generate beautiful carousel images (1080×1350) for Instagram or a PDF for LinkedIn
@@ -864,6 +897,16 @@ const OutputPanel: React.FC<Props> = ({
                     >
                       Schedule
                     </Button>
+                      {onSavePlatform && (
+                        <Button
+                          className="rounded-xl px-4 py-2"
+                          color="primary"
+                          onClick={() => onSavePlatform("carousel")}
+                          size="sm"
+                        >
+                          Save
+                        </Button>
+                      )}
                   </div>
                 </div>
               ) : (
@@ -920,6 +963,16 @@ const OutputPanel: React.FC<Props> = ({
                   >
                     Schedule
                   </Button>
+                  {onSavePlatform && (
+                    <Button
+                      className="rounded-xl px-4 py-2"
+                      color="primary"
+                      onClick={() => onSavePlatform("linkedin")}
+                      size="sm"
+                    >
+                      Save
+                    </Button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -990,8 +1043,86 @@ const OutputPanel: React.FC<Props> = ({
           </div>
         )}
 
-        <div className="flex flex-wrap gap-3">
-          <Button className="rounded-xl" onClick={handleCopy} StartIcon={Copy}>Copy</Button>
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex gap-2 items-center">
+            <Button
+              className="rounded-xl"
+              size="sm"
+              color="minimal"
+              onClick={async () => {
+                // Select & Copy (attempt to copy rich HTML)
+                const content = outputs[activeTab as keyof Outputs] || "";
+                const html = renderMarkdownToHTML(content);
+                try {
+                  if (navigator.clipboard && (window as any).ClipboardItem) {
+                    const blob = new Blob([html], { type: 'text/html' });
+                    const clipboardItem = new (window as any).ClipboardItem({ 'text/html': blob });
+                    await navigator.clipboard.write([clipboardItem]);
+                    showToast('Content copied (HTML) - ready to paste into Medium', 'success');
+                  } else {
+                    await navigator.clipboard.writeText(html);
+                    showToast('Content copied as HTML text', 'success');
+                  }
+                } catch (err) {
+                  console.error('Select & Copy failed, copying plain text instead', err);
+                  await navigator.clipboard.writeText(content);
+                  showToast('Content copied as plain text', 'success');
+                }
+              }}
+            >
+              Select & Copy
+            </Button>
+
+            <Button
+              className="rounded-xl"
+              size="sm"
+              color="minimal"
+              onClick={async () => {
+                // Copy markdown
+                const content = outputs[activeTab as keyof Outputs] || "";
+                try {
+                  await navigator.clipboard.writeText(content);
+                  showToast('Markdown copied to clipboard', 'success');
+                } catch (err) {
+                  console.error('Copy markdown failed', err);
+                  showToast('Failed to copy markdown', 'error');
+                }
+              }}
+            >
+              Copy MD
+            </Button>
+
+            <Button
+              className="rounded-xl"
+              size="sm"
+              color="minimal"
+              onClick={async () => {
+                // Copy HTML conversion
+                const content = outputs[activeTab as keyof Outputs] || "";
+                const html = renderMarkdownToHTML(content);
+                try {
+                  await navigator.clipboard.writeText(html);
+                  showToast('HTML copied to clipboard', 'success');
+                } catch (err) {
+                  console.error('Copy HTML failed', err);
+                  showToast('Failed to copy HTML', 'error');
+                }
+              }}
+            >
+              Copy HTML
+            </Button>
+            {onSavePlatform && (
+              <Button
+                className="rounded-xl"
+                size="sm"
+                color="primary"
+                onClick={() => onSavePlatform(activeTab as any)}
+              >
+                Save
+              </Button>
+            )}
+          </div>
+
           <Button className="rounded-xl" color="secondary" onClick={handleRegenerate} StartIcon={Wand} loading={regenerateLoading} disabled={regenerateLoading}>{regenerateLoading ? "Regenerating..." : "Regenerate"}</Button>
         </div>
       </div>

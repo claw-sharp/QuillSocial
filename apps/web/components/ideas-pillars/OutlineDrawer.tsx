@@ -17,6 +17,7 @@ import {
   X,
 } from "@quillsocial/ui/components/icon";
 import React, { useEffect, useState } from "react";
+import { trpc } from "@quillsocial/trpc/react";
 import type { Idea, Outline, Tone } from "./types";
 
 // OutlineDrawer Component Props
@@ -46,6 +47,17 @@ export function OutlineDrawer({
   const [isDirty, setIsDirty] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [lastIdeaId, setLastIdeaId] = useState<string | null>(null);
+  const utils = trpc.useContext();
+
+  const saveOutlineMutation = trpc.viewer.ideasPillars.saveOutline.useMutation({
+    onSuccess: () => {
+      utils.viewer.ideasPillars.listIdeas.invalidate();
+      showToast("Outline saved successfully", "success");
+    },
+    onError: (error) => {
+      showToast(error.message || "Failed to save outline", "error");
+    },
+  });
 
   const actuallyGenerating = externalIsGenerating || isGenerating;
 
@@ -88,6 +100,23 @@ export function OutlineDrawer({
       console.log("Setting outline text:", result.text);
       setOutlineDraft(result.text);
       setIsDirty(true);
+
+      // Persist the generated outline locally without delegating to parent to avoid
+      // closing the drawer. Use the same tRPC mutation as the page.
+      try {
+        const toneUpper = tone.toUpperCase() as "FRIENDLY" | "AUTHORITATIVE" | "CONTRARIAN";
+        await saveOutlineMutation.mutateAsync({
+          ideaId: idea.id,
+          text: result.text,
+          tone: toneUpper,
+        });
+
+        // Mark as not dirty after successful save
+        setIsDirty(false);
+      } catch (saveError) {
+        console.error("Failed to auto-save generated outline:", saveError);
+      }
+
       showToast("Outline generated successfully", "success");
     } catch (error) {
       console.error("Failed to generate outline:", error);

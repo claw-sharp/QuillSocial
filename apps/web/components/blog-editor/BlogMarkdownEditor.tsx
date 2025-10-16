@@ -185,6 +185,58 @@ export function BlogMarkdownEditor({ value, onChange, placeholder }: BlogMarkdow
     }
   };
 
+  // Function to simulate Select All + Copy for rich content (preferred for pasting into editors like Medium)
+  const handleCopySelectAll = async () => {
+    try {
+      // If we can use Clipboard API to write HTML, do that first using the rendered HTML
+      const html = renderMarkdownToHTML(markdownContent);
+
+      // Some browsers support writing HTML directly
+      // @ts-ignore - ClipboardItem types may not be present in older TS configs
+      if (navigator.clipboard && (window as any).ClipboardItem) {
+        const blob = new Blob([html], { type: 'text/html' });
+        const clipboardItem = new (window as any).ClipboardItem({ 'text/html': blob });
+        await navigator.clipboard.write([clipboardItem]);
+        showToast('Content copied', 'success');
+        return;
+      }
+
+      // Fallback: create a temporary hidden element, select its contents and execCommand copy
+      const temp = document.createElement('div');
+      temp.style.position = 'fixed';
+      temp.style.left = '-9999px';
+      temp.innerHTML = html;
+      document.body.appendChild(temp);
+
+      const range = document.createRange();
+      range.selectNodeContents(temp);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+
+      // execCommand is deprecated but widely supported for copy
+      const successful = document.execCommand('copy');
+      sel?.removeAllRanges();
+      document.body.removeChild(temp);
+
+      if (successful) {
+        showToast('Content copied', 'success');
+      } else {
+        // Last resort: copy as plain HTML text
+        await navigator.clipboard.writeText(html);
+        showToast('Content copied as text (paste into Medium and it should work)', 'success');
+      }
+    } catch (err) {
+      console.error('Select-All copy failed, falling back to markdown copy', err);
+      try {
+        await navigator.clipboard.writeText(markdownContent);
+        showToast('Copied markdown to clipboard', 'success');
+      } catch (err2) {
+        showToast('Failed to copy content', 'error');
+      }
+    }
+  };
+
   // Check if an image is currently selected
   const isImageSelected = editor?.isActive('image') ?? false;  if (!editor) {
     return null;
@@ -220,27 +272,7 @@ export function BlogMarkdownEditor({ value, onChange, placeholder }: BlogMarkdow
       <div className="border border-slate-200 rounded-xl bg-white overflow-hidden">
         {/* Toolbar */}
         <div className="border-b border-slate-200 bg-slate-50 p-2 flex items-center gap-1 flex-wrap">
-        {/* Copy buttons */}
-        <Button
-          type="button"
-          size="sm"
-          color="secondary"
-          onClick={handleCopyMarkdown}
-          StartIcon={Copy}
-          tooltip="Copy Markdown to clipboard"
-        >
-          Copy
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          color="secondary"
-          onClick={handleCopyHTML}
-          tooltip="Copy HTML to clipboard"
-        >
-          Copy HTML
-        </Button>
-        <div className="w-px h-6 bg-slate-300 mx-1" />
+        {/* formatting buttons */}
         <Button
           type="button"
           size="sm"
@@ -439,6 +471,18 @@ export function BlogMarkdownEditor({ value, onChange, placeholder }: BlogMarkdow
       onClose={() => setShowImageDialog(false)}
       handleImageChange={handleImageInsert}
     />
+    {/* Bottom bar with copy actions */}
+    <div className="border-t border-slate-200 bg-slate-50 p-3 flex gap-2 justify-end">
+      <Button type="button" size="sm" color="minimal" onClick={handleCopySelectAll}>
+        Select
+      </Button>
+      <Button type="button" size="sm" color="minimal" onClick={handleCopyMarkdown}>
+        Copy Markdown
+      </Button>
+      <Button type="button" size="sm" color="primary" onClick={handleCopyHTML}>
+        Copy HTML
+      </Button>
+    </div>
   </>
   );
 }

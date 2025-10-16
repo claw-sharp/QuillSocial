@@ -26,11 +26,9 @@ export const saveGeneratedPostsHandler = async ({ ctx, input }: SaveGeneratedPos
   });
 
   // Get default content (linkedin or first tweet from x thread)
-  const defaultContent: string = outputs.linkedin
-    ? (outputs.linkedin as string)
-    : Array.isArray(outputs.x)
-      ? outputs.x.join('\n\n')
-      : (outputs.x as string) || "";
+  // We'll compute default content from the merged outputs (see update path below).
+  // For now, initialize to empty; we'll set it later after determining the final outputs.
+  let defaultContent: string = "";
 
   let post;
 
@@ -45,6 +43,20 @@ export const saveGeneratedPostsHandler = async ({ ctx, input }: SaveGeneratedPos
       throw new Error("Post not found or unauthorized");
     }
 
+    // Merge existing multiPlatformOutputs with incoming outputs so clients can send
+    // partial updates without overwriting other channels.
+    const existingOutputs = (existingPost.multiPlatformOutputs || {}) as Record<string, any>;
+    const incomingOutputs = (outputs || {}) as Record<string, any>;
+
+    const mergedOutputs = Object.assign({}, existingOutputs, incomingOutputs) as Record<string, any>;
+
+    // Compute default content (prefer linkedin, then first item of x array or x string)
+    defaultContent = mergedOutputs.linkedin
+      ? (mergedOutputs.linkedin as string)
+      : Array.isArray(mergedOutputs.x)
+      ? mergedOutputs.x.join('\n\n')
+      : (mergedOutputs.x as string) || "";
+
     post = await prisma.post.update({
       where: {
         id: postId,
@@ -53,7 +65,7 @@ export const saveGeneratedPostsHandler = async ({ ctx, input }: SaveGeneratedPos
         idea: outline,
         content: defaultContent,
         tone: tone ? (tone.toUpperCase() as "FRIENDLY" | "AUTHORITATIVE" | "CONTRARIAN") : null,
-        multiPlatformOutputs: outputs as any,
+        multiPlatformOutputs: mergedOutputs as any,
         cta,
         utm,
       },
@@ -62,6 +74,14 @@ export const saveGeneratedPostsHandler = async ({ ctx, input }: SaveGeneratedPos
     console.log("✅ [saveGeneratedPosts] Updated post:", { postId: post.id });
   } else {
     // Create a new Post record
+    // For create path, compute defaultContent from provided outputs
+    const providedOutputs = outputs || {};
+    defaultContent = providedOutputs.linkedin
+      ? (providedOutputs.linkedin as string)
+      : Array.isArray(providedOutputs.x)
+      ? providedOutputs.x.join('\n\n')
+      : (providedOutputs.x as string) || "";
+
     post = await prisma.post.create({
       data: {
         userId: user.id,
@@ -70,7 +90,7 @@ export const saveGeneratedPostsHandler = async ({ ctx, input }: SaveGeneratedPos
         status: "NEW",
         ideaId,
         tone: tone ? (tone.toUpperCase() as "FRIENDLY" | "AUTHORITATIVE" | "CONTRARIAN") : null,
-        multiPlatformOutputs: outputs as any,
+        multiPlatformOutputs: providedOutputs as any,
         cta,
         utm,
       },
