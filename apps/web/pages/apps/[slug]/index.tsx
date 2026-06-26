@@ -99,6 +99,8 @@ export const getStaticPaths: GetStaticPaths<{ slug: string }> = async () => {
   } catch (e: unknown) {
     if (e instanceof Prisma.PrismaClientInitializationError) {
       // Database is not available at build time, but that's ok – we fall back to resolving paths on demand
+    } else if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2021") {
+      // Database is available but table does not exist (not migrated yet), that's ok
     } else {
       throw e;
     }
