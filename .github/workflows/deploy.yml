@@ -34,7 +34,7 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: yarn install
+        run: corepack enable && yarn install
 
       - name: Build Web Application
         run: yarn build
