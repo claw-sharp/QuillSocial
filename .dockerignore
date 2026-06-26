@@ -76,8 +76,6 @@ LICENSE
 .stylelintcache
 
 # Prisma
-prisma/migrations/
-packages/prisma/migrations/
 
 # Build artifacts
 *.tsbuildinfo
