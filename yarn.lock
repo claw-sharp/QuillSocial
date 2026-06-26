@@ -4843,7 +4843,7 @@ __metadata:
     typescript: ^5.9.3
     vitest: ^1.0.4
   peerDependencies:
-    "@prisma/client": ">=5.0.0"
+    "@prisma/client": ">=4.16.0"
     openai: ^4
     zod: ^3
   languageName: unknown
@@ -23301,7 +23301,7 @@ turbo@latest:
 
 "typescript@patch:typescript@^5.9.3#~builtin<compat/typescript>":
   version: 5.9.3
-  resolution: "typescript@patch:typescript@npm%3A5.9.3#~builtin<compat/typescript>::version=5.9.3&hash=1f5320"
+  resolution: "typescript@patch:typescript@npm%3A5.9.3#~builtin<compat/typescript>::version=5.9.3&hash=d73830"
   bin:
     tsc: bin/tsc
     tsserver: bin/tsserver
