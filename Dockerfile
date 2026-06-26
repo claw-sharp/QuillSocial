@@ -19,6 +19,10 @@ COPY --chown=nextjs:nodejs apps/web/.next/standalone ./
 COPY --chown=nextjs:nodejs apps/web/.next/static ./apps/web/.next/static
 COPY --chown=nextjs:nodejs apps/web/public ./apps/web/public
 
+# Include Prisma schema and migrations for the cloud run migration job
+COPY --chown=nextjs:nodejs packages/prisma/schema.prisma ./prisma/schema.prisma
+COPY --chown=nextjs:nodejs packages/prisma/migrations ./prisma/migrations
+
 # Expose port
 EXPOSE 3000
 
