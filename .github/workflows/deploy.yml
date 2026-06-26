@@ -105,6 +105,7 @@ jobs:
               --image "$IMAGE" \
               --command "sh" \
               --args "-c,npx prisma migrate deploy" \
+              --memory "1Gi" \
               --set-env-vars "NODE_ENV=production,DATABASE_URL=${{ env.DATABASE_URL }}"
           else
             gcloud run jobs create "${{ env.JOB_NAME }}" \
@@ -112,6 +113,7 @@ jobs:
               --image "$IMAGE" \
               --command "sh" \
               --args "-c,npx prisma migrate deploy" \
+              --memory "1Gi" \
               --set-env-vars "NODE_ENV=production,DATABASE_URL=${{ env.DATABASE_URL }}"
           fi
 
