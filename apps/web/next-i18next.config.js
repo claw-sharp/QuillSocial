@@ -1,9 +1,12 @@
 const path = require("path");
-const i18nConfig = require("@quillsocial/config/next-i18next.config");
 
 /** @type {import("next-i18next").UserConfig} */
 const config = {
-  ...i18nConfig,
+  i18n: {
+    defaultLocale: "en",
+    locales: ["en"],
+  },
+  reloadOnPrerender: process.env.NODE_ENV !== "production",
   localePath: path.resolve("./public/static/locales"),
 };
 
