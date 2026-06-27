@@ -87,7 +87,7 @@ jobs:
             --memory 512Mi \
             --min-instances 0 \
             --max-instances 2 \
-            --set-env-vars "NODE_ENV=production,NEXTAUTH_URL=https://app.quillsocial.com,NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }},NEXT_PUBLIC_WEBAPP_URL=https://app.quillsocial.com,DATABASE_URL=${{ env.DATABASE_URL }}"
+            --update-env-vars "NODE_ENV=production,NEXTAUTH_URL=https://app.quillsocial.com,NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }},NEXT_PUBLIC_WEBAPP_URL=https://app.quillsocial.com,DATABASE_URL=${{ env.DATABASE_URL }}"
 
       - name: Run DB migrations (Cloud Run job)
         shell: bash
@@ -104,7 +104,7 @@ jobs:
               --command "sh" \
               --args "-c,npx prisma@4.16.0 migrate deploy" \
               --memory "1Gi" \
-              --set-env-vars "NODE_ENV=production,DATABASE_URL=${{ env.DATABASE_URL }}"
+              --update-env-vars "NODE_ENV=production,DATABASE_URL=${{ env.DATABASE_URL }}"
           else
             gcloud run jobs create "${{ env.JOB_NAME }}" \
               --region "${{ env.REGION }}" \
@@ -112,7 +112,7 @@ jobs:
               --command "sh" \
               --args "-c,npx prisma@4.16.0 migrate deploy" \
               --memory "1Gi" \
-              --set-env-vars "NODE_ENV=production,DATABASE_URL=${{ env.DATABASE_URL }}"
+              --update-env-vars "NODE_ENV=production,DATABASE_URL=${{ env.DATABASE_URL }}"
           fi
 
           gcloud run jobs execute "${{ env.JOB_NAME }}" --region "${{ env.REGION }}" --wait

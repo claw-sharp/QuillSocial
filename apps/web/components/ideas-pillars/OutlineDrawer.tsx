@@ -19,6 +19,7 @@ import {
 import React, { useEffect, useState } from "react";
 import { trpc } from "@quillsocial/trpc/react";
 import type { Idea, Outline, Tone } from "./types";
+import { BlogMarkdownEditor } from "../blog-editor/BlogMarkdownEditor";
 
 // OutlineDrawer Component Props
 interface OutlineDrawerProps {
@@ -246,13 +247,16 @@ export function OutlineDrawer({
 
         {/* Editor */}
         <div className="flex-1 overflow-y-auto py-4">
-          <TextArea
-            value={outlineDraft}
-            onChange={handleTextChange}
-            placeholder="Your outline will appear here..."
-            className="min-h-[300px] w-full resize-none rounded-lg border p-4 font-mono text-sm"
-            data-testid="outline-textarea"
-          />
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <BlogMarkdownEditor
+              value={outlineDraft}
+              onChange={(val) => {
+                setOutlineDraft(val);
+                setIsDirty(true);
+              }}
+              placeholder="Your outline will appear here..."
+            />
+          </div>
 
           <div className="mt-4">
             <Button

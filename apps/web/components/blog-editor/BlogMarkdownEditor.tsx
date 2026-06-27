@@ -488,7 +488,7 @@ export function BlogMarkdownEditor({ value, onChange, placeholder }: BlogMarkdow
 }
 
 // Simple markdown to HTML renderer for preview and Medium compatibility
-function renderMarkdownToHTML(markdown: string): string {
+export function renderMarkdownToHTML(markdown: string): string {
   let html = markdown;
 
   // Split into lines for better processing
