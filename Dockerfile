@@ -18,6 +18,7 @@ ENV NODE_ENV=production \
 COPY --chown=nextjs:nodejs apps/web/.next/standalone ./
 COPY --chown=nextjs:nodejs apps/web/.next/static ./apps/web/.next/static
 COPY --chown=nextjs:nodejs apps/web/public ./apps/web/public
+COPY --chown=nextjs:nodejs apps/web/next-i18next.config.js ./apps/web/next-i18next.config.js
 
 # Include Prisma schema and migrations for the cloud run migration job
 COPY --chown=nextjs:nodejs packages/prisma/schema.prisma ./prisma/schema.prisma

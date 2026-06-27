@@ -87,7 +87,7 @@ jobs:
             --memory 512Mi \
             --min-instances 0 \
             --max-instances 2 \
-            --set-env-vars NODE_ENV=production
+            --set-env-vars "NODE_ENV=production,NEXTAUTH_URL=https://app.quillsocial.com,NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }},NEXT_PUBLIC_WEBAPP_URL=https://app.quillsocial.com,DATABASE_URL=${{ env.DATABASE_URL }}"
 
       - name: Run DB migrations (Cloud Run job)
         shell: bash
